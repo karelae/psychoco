@@ -9,21 +9,122 @@ Section references of the form "README §3" point there.
 
 ---
 
-## 1. Status and stack
+## 1. Stack and deployment
 
-**Design phase. Nothing is implemented.**
+### 1.1 Status
 
-No stack has been chosen — not language, framework, datastore, or hosting. That
-is deliberate and still open (§6). Two constraints already narrow it, both from
-README §7:
+**First implementation exists.** The scoring, fairness and scheduling logic is
+written and under test; the Sheet I/O, setup, validation, operator menu and
+read-only board are written but can only be exercised by deploying. Nothing has
+run a real period yet.
 
-- The operator is untrained, changes annually, and needs a real interface for
-  every recurring task. No CLI, no config files, no hand-edited data.
-- Several people need to see the same board at the same time, from phones and
-  laptops.
+### 1.2 The stack
 
-Together those point firmly at a hosted application with a shared UI rather than
-a local or single-user tool, but the decision has not been made.
+| Layer | Choice |
+|---|---|
+| Datastore | **A Google Sheet.** One tab per entity (§2) |
+| Logic | **Google Apps Script** (V8), plain JavaScript |
+| Operator interface | The Sheet itself, plus a **Psychoco menu** for every recurring task |
+| Group interface | An **Apps Script Web App** serving a read-only board |
+| Access control | Google sharing, plus an email allowlist on the People tab |
+| Audit | Drive revision history, plus an `Audit` tab written by every mutation |
+| Backups | Drive revision history |
+| Source of truth for code | This repository, pushed with `clasp` |
+| Tests | Node's built-in runner against the framework-free modules |
+| Hosting | None. There is no server, no container, no database and no bill |
+
+The layout mirrors that split deliberately:
+
+```
+apps-script/
+  00_schema.gs      constants, civil-date and fixed-point helpers   — pure
+  10_scoring.gs     points = base x multiplier                      — pure
+  20_fairness.gs    availability, expected share, balance           — pure
+  30_scheduler.gs   constraints, greedy seed, local search          — pure
+  40_sheet.gs       the only file that touches SpreadsheetApp
+  50_setup.gs       builds the workbook
+  60_validate.gs    invariant checks
+  70_menu.gs        the operator's actions
+  80_webapp.gs      the read-only board
+  board.html
+test/               Node tests for 00-30
+```
+
+**`00_schema.gs` through `30_scheduler.gs` touch no Apps Script API at all.**
+They are ordinary JavaScript, which is what lets `test/harness.mjs` load them
+into a `vm` context and test them under Node. Apps Script has no test runner, so
+this separation is the only thing standing between the fairness maths and
+deploy-and-see. Everything from `40_sheet.gs` up is kept thin for the same
+reason.
+
+### 1.3 Why a spreadsheet rather than a hosted application
+
+A Go application with Postgres was designed and then rejected. The reasoning is
+worth keeping, because it will be re-litigated:
+
+- **Operability.** README §7 makes an untrained, annually-rotating operator a
+  hard requirement. A spreadsheet is the most operable interface that exists for
+  that population, at zero build cost.
+- **Backups.** A lost ledger cannot be reconstructed — nobody can reproduce who
+  worked which post across nine months. Drive revision history solves this
+  outright, with no cron job, no object storage and no restore drill.
+- **Audit.** Revision history records who changed which cell, under a real
+  Google identity. A shared-login application could only ever record "the admin
+  did it".
+- **Neglect resistance.** This was the argument that originally favoured a
+  compiled binary, and on closer inspection it points the other way: a VM the
+  maintainer personally owns is the least neglect-resistant part of any such
+  design. Here there is no OS to patch, no TLS to renew and no database to
+  upgrade.
+- **Shipping at all.** The likeliest failure of a solo, unpaid, part-time
+  project is never finishing. Days of work beats weeks.
+
+The hosted application becomes the right answer if per-person logins are needed
+(self-service absences), if the pool grows well past forty, or if the integrity
+problem below turns out to bite in practice rather than in theory.
+
+### 1.4 What a spreadsheet costs us
+
+**Storage enforces nothing.** Every invariant that a database would guarantee
+with a constraint is, here, a convention. Sorting one column without the others
+scrambles the ledger silently; a paste over a formula, a deleted row, or `12`
+typed where `1.2` belongs are all accepted without complaint.
+
+Four mitigations, in descending order of usefulness:
+
+1. **`60_validate.gs` checks the invariants directly** — coverage, one post per
+   person per day, the rest day after a 1st, names that exist, nobody rostered
+   during an absence, escalation readiness, and every ledger price re-derived
+   from the config version it claims. Run from the menu. This does not *prevent*
+   a bad edit; it turns "silently wrong until September" into "flagged in
+   seconds", which is the difference that matters.
+2. **Data validation** on entry: posts as dropdowns, dates as dates, and names
+   validated against the People tab, so a misspelling is rejected rather than
+   quietly becoming a fourth colleague.
+3. **Protected ranges** on Ledger, Escalations and Audit — warning rather than
+   blocking, because a genuine correction has to stay possible.
+4. **Revision history** for recovery once something is found.
+
+**The Sheet must not be shared with the group.** Sharing is per-file, so a
+viewer on the workbook can read individual `Absence` rows — which README §7.1
+forbids. The board (§5) exists precisely so nobody needs view access.
+
+**No test coverage above `30_scheduler.gs`.** Apps Script has no test runner, so
+the I/O, setup, menu and board layers are verified by use. Hence keeping them
+thin.
+
+### 1.5 Civil dates, not timestamps
+
+A slot belongs to a calendar day, and "Saturday" or "Christmas Day" is a
+Europe/Brussels calendar fact. The pure modules work exclusively in ISO
+`YYYY-MM-DD` strings and do all arithmetic through `Date.UTC`, so no timezone or
+daylight-saving boundary can shift a date. `40_sheet.gs` is the only file that
+converts to and from Sheet `Date` values, and it does so through
+`Utilities.formatDate` in an explicit `Europe/Brussels` timezone. The script
+manifest pins the same zone.
+
+Getting this wrong prices multipliers against the wrong day type, and does it
+inconsistently twice a year.
 
 ---
 
@@ -40,7 +141,28 @@ a local or single-user tool, but the decision has not been made.
 | **Escalation**    | Date, who dropped out, the resulting shift-up chain, who backfilled the vacant post, reason                                                        |
 | **ScoringConfig** | Versioned base weights, multipliers, and constraint parameters, with an effective-from date                                                        |
 | **Period**        | 1 Oct – 30 Sep window; the scope of every balance calculation, plus the name of the operator running it (§5)                                       |
-| **AuditEntry**    | What changed, when, under which role, under which period's operator. With shared logins, the only record of who did what                           |
+| **AuditEntry**    | What changed, when, by which Google account, under which period's operator                                                                          |
+
+### 2.0 How the entities map to tabs
+
+One tab per entity, with the header row as the schema. `HEADERS` in
+`00_schema.gs` is authoritative — `50_setup.gs` creates the tabs from it and
+`40_sheet.gs` reads columns by header name, so renaming a column in the Sheet
+breaks the read rather than silently shifting data.
+
+| Entity | Tab | Notes |
+|---|---|---|
+| Person | `People` | Plus an optional `Email`, used as the board's viewer allowlist (§5) |
+| Absence | `Absences` | `Reduces availability` is a checkbox |
+| Working fraction | `Workload` | One row per span of dates. Only needed when someone's hours change part-way through a period; the People tab's `Fraction` covers everything else |
+| DayType | `Holidays` | Only holidays are stored; weekday, Friday, Saturday and Sunday are derived from the date |
+| Slot | — | Never stored. Slots are generated from the date range, three per day |
+| Assignment | `Roster` | What was planned |
+| WorkedDuty | `Ledger` | What happened, and the only thing that earns points |
+| Escalation | `Escalations` | Written by the drop-out flow |
+| ScoringConfig | `Config` | `Version`, `Effective from`, `Key`, `Value` — one row per setting |
+| Period | `Period` | A single row: start, end, operator |
+| AuditEntry | `Audit` | Appended by `audit()` on every mutation |
 
 ### 2.1 Assignment versus WorkedDuty
 
@@ -88,6 +210,23 @@ Every `WorkedDuty` records the `ScoringConfig` version it was priced under. So:
 Nothing about a balance should be stored as a mutable running total — it is
 derived, so it cannot drift out of step with the duties that produced it.
 
+### 3.4 Points are exact integers, never floats
+
+Points look like decimals — 1.5, 4.5, 13.2 — and a fairness ledger cannot afford
+floating-point drift. "Your balance is −0.00000000003" destroys confidence in a
+tool whose entire job is being believably even.
+
+So: **store multipliers and points as integer hundredths.** A multiplier of 1.5
+is `150`; a base of 6 is `600`; their product divided by 100 is `900`, exactly
+9.00 points. Addition and subtraction across a whole period stay exact, with no
+dependency on a decimal library and no float anywhere in the arithmetic.
+
+The one unavoidable division is `targetRate` (§3.2), which does not divide
+evenly. Keep it out of the stored values: compute `expected(p)` as
+`totalPoints × availableDays(p) / totalAvailableDays` — one division, performed
+last, rounded only for display. `balance` is then exact up to that single
+rounding, rather than accumulating error across several hundred duties.
+
 ---
 
 ## 4. The scheduler
@@ -125,10 +264,28 @@ exchanges — against the weighted objective. This keeps every intermediate stat
 valid roster, and every move explainable as "this swap improved balance by X".
 
 A constraint solver (CP-SAT or MIP) is the alternative and would find better
-optima. The trade-off is explainability: a solver's answer is "the model says
-so", which is exactly the wrong thing to tell someone who thinks they got a raw
-deal. Local search is the starting point; the solver stays on the table if the
-constraint set outgrows it.
+optima. Two reasons not to. The first is explainability: a solver's answer is
+"the model says so", which is exactly the wrong thing to tell someone who thinks
+they got a raw deal. The second is that no solver of that kind runs inside Apps
+Script, so it would mean a service elsewhere and the end of the zero-hosting
+property (§1.3).
+
+Neither is likely to bite. Generation is **monthly, not annual** — around 90
+slots against 40 people, which local search settles in well under a second, far
+inside the Apps Script execution limit. Monthly is also the right product
+behaviour, since absences are not known a year ahead.
+
+**One structural property makes the search cheap.** Every slot in the window gets
+filled, so the total points distributed is fixed before anything is assigned —
+which means each person's *expected* share is a constant throughout the search.
+The objective is therefore fully decomposable per person, and a swap only changes
+the two people involved. Each move is O(1) rather than a full recomputation.
+
+**The scheduler is a pure, isolated module**: slots and ledger in, assignments
+and reasons out. No `SpreadsheetApp`, no I/O, and deterministic under a fixed
+seed, so it is testable under Node (§1.2) and reproducible from its inputs. That
+also means a future port to another language rewrites plumbing rather than
+thinking.
 
 Whichever is used, the requirement of README §5.2 stands: for any slot the system
 must be able to name the candidates considered, their balances, and the
@@ -173,28 +330,39 @@ the operator records who actually took it.
 
 ## 5. Access, roles and audit
 
-Two shared logins, no per-person identity — a **viewer** role for the group and
-an **admin** role for the operator. The reasoning, and what it means for the
-group, is in README §7.1. What it requires of the implementation:
+README §7.1 argued for two roles rather than forty accounts. Google's own sharing
+gives us that, and better than shared passwords would have:
 
-- **Admin is a superset of viewer.** One application with two roles, not two
-  front ends.
-- **Every mutation writes an `AuditEntry`**: what changed, when, under which role,
-  and under which period's operator. With a shared credential the log is the
-  *only* record of who did what, so it cannot be an afterthought bolted on later.
-- **Attribution comes from `Period.operator`.** Only one person operates at a
-  time, so the operator's name on the period is what turns "admin did it" into a
-  named person.
-- **Every mutation records an actor from day one**, even though today that actor
-  is only ever a role plus the period's operator. If per-person logins arrive
-  later (§6), real identities then extend the audit trail instead of invalidating
-  it.
-- **The viewer must not be able to read individual `Absence` rows.** It sees
-  availability only as a derived count of available days. This is an access rule,
-  not a UI choice — the aggregate is all the fairness maths needs.
-- **Both passwords rotate at the period boundary.** There is no per-user
-  revocation, so rotation on 1 October is the only way to cut off people who have
-  left.
+| | Who | How |
+|---|---|---|
+| **Edit** | the operator alone | The Sheet is shared with nobody else |
+| **Read** | the pool | The Web App (`80_webapp.gs`), which the Sheet's data never reaches directly |
+
+- **The Sheet is never shared with the group.** Sharing is per-file, so a viewer
+  on the workbook could read individual `Absence` rows, which README §7.1
+  forbids. The board is the group's only access path, and it emits availability
+  as a derived day count and nothing more — enforced in `buildBoardData`, not in
+  the template.
+- **The board runs as the deploying account** (`executeAs: USER_DEPLOYING`), so
+  it can read a Sheet its readers cannot open. That makes the allowlist the real
+  access control, not a convenience.
+- **The allowlist is the `Email` column on the People tab.** If any address is
+  filled in, only those addresses may read the board; if the column is empty it
+  degrades to "any signed-in Google account with the link". The empty case is the
+  weaker default and SETUP.md asks for the emails.
+- **Attribution is real.** `Session.getActiveUser()` gives the acting Google
+  account, and Drive revision history records who changed which cell. This is
+  strictly better than the shared-login design, which could only ever have
+  recorded "the admin did it".
+- **Every mutation writes to the `Audit` tab** — timestamp, acting account, the
+  period's operator, action, detail — via `audit()` in `40_sheet.gs`. Revision
+  history covers cell edits; the Audit tab covers what the *script* did, which
+  revision history describes only as a bulk change.
+- **`Period.operator` still matters.** It names who is accountable for the period
+  even when several people have touched the account over the years.
+- **Revocation is per-person.** Someone who leaves is removed from the People tab
+  and loses board access with it. No password rotation, and no shared secret to
+  leak — which removes an entire class of problem the hosted design had.
 
 ---
 
@@ -202,19 +370,89 @@ group, is in README §7.1. What it requires of the implementation:
 
 Technical questions. The ones for the group are in README §9.
 
-- **Where it runs.** Language, framework, datastore, hosting — all open. §1 lists
-  the two constraints that narrow it; the decision itself is still to be made
-  with the maintainer.
-- **Solver or local search.** §4.3 starts with local search for explainability.
-  Whether the constraint set eventually justifies CP-SAT or MIP is a question to
-  revisit once the volume caps and spacing rules are pinned down.
+- **Who owns the Google account in year three.** The tool lives in one Drive.
+  The operator rotates annually and the maintainer may drift away; if the account
+  is personal and lapses, the ledger goes with it. A dedicated account handed
+  over each October is the current plan, and a department Workspace account is
+  the better long-term answer. Unsolved, and not a technical problem.
+- **Generation window.** §4.3 assumes monthly. Whether the operator wants a
+  month, a quarter, or "the rest of the period" is a product question with a
+  direct effect on how much freedom the optimiser has.
 - **How the swap record works.** README §9 wants swaps recorded rather than
-  forbidden. Whether that is a `WorkedDuty` correction, a first-class `Swap`
-  entity, or an `Escalation` variant is undecided.
-- **Whether per-person logins arrive later.** §5 keeps the door open at the cost
-  of one actor field. If operator workload forces it (README §9), the migration
-  should be additive.
-- **Recalculation scope.** §3.2 requires a logged recalculation when config
+  forbidden. Whether that is a ledger correction, a `Swap` tab, or an
+  `Escalation` variant is undecided.
+- **Partial-month publishing.** `publishMonth` skips dates already in the ledger,
+  which is what protects settled drop-out days. It does not yet handle publishing
+  a month that is only half over.
+- **Recalculation scope.** §3.2 requires a logged recalculation when the config
   changes mid-period. Whether that reprices every duty in the period or only
-  those after the effective-from date is a decision with fairness consequences,
-  not just technical ones.
+  those after the effective-from date has fairness consequences, not just
+  technical ones. Not yet implemented — today a config change leaves already
+  published duties priced under the old version, which `60_validate.gs` reports
+  as a mismatch only if the version numbers disagree.
+- **No test coverage above the pure modules.** §1.4. Accepted, mitigated by
+  keeping those layers thin.
+
+---
+
+## 7. Deferred work
+
+Known and wanted, not built. Recorded here so it is not rediscovered.
+
+### 7.1 The operator interface needs a rework
+
+Every operator action is a chain of `ui.prompt()` dialogs: you type `2026-10` and
+hope. No date picker, no list of names to choose from, no preview of a roster
+before it is written. It works, and for an untrained operator it is worse than it
+should be — which matters, because README §7 makes operability a hard
+requirement rather than a nicety.
+
+The shape of the fix is an Apps Script **HTML sidebar** in place of the prompt
+chain: a month picker, a list of people to select from, and for generation a
+preview of the resulting balance spread before anything is committed. Roughly a
+few hundred lines, no new dependencies, and it removes almost all of the typing.
+
+### 7.2 Overriding an assignment from the board
+
+Today an override means typing over a cell on the Roster tab, which bypasses
+every feasibility check — nothing stops you handing someone a post on their rest
+day or during their leave. `60_validate.gs` catches it afterwards, if anybody
+remembers to run it. README §5.2 wants overrides *supported*, not merely
+possible, and free-form cell editing is not that.
+
+Wanted: click a day in the calendar, get the same ranked shortlist the scheduler
+uses — eligible people most-owed first, with each ineligible person's reason —
+pick one, give a reason, and have it write the roster row and an audit entry.
+
+**The security model is the hard part, and must not be skipped.** The Web App
+runs as the deploying account (§5), so it can read a Sheet its readers cannot
+open. The moment a callable mutation exists, *any viewer invoking it runs with
+the owner's permissions*, and the email allowlist becomes the only thing between
+a colleague and the ledger. Today that risk is exactly zero, because `doGet` is
+the only entry point and nothing writes. Giving that up needs:
+
+- the writable path confined to `showBoard()`, the menu dialog only the operator
+  can open, with `doGet()` hardcoding read-only;
+- every server-side mutation verifying the caller itself, never trusting a flag
+  that arrived from the client;
+- an audit entry for every write, as everywhere else.
+
+Same reasoning applies to recording a drop-out or an absence by clicking a day,
+which are the obvious follow-ons.
+
+### 7.3 Validation on edit
+
+`60_validate.gs` only runs when the operator chooses to run it. An `onEdit`
+trigger would turn "silently wrong until September" into "flagged in seconds",
+which is the whole mitigation §1.4 relies on. Cheap to add, and the reason the
+checks were written as a pure function over the model rather than as a menu
+action.
+
+### 7.4 Recalculation when the scoring config changes
+
+§3.2 requires an explicit, logged recalculation when weights change mid-period.
+Not implemented: today a config change simply leaves already-published duties
+priced under the old version. Whether a recalculation should reprice the whole
+period or only duties after the effective-from date is a fairness decision, not
+a technical one — see §6.
+

@@ -208,8 +208,16 @@ a member of the pool (between arrival and departure) and not on recorded
 absence, scaled by their working fraction:
 
 ```
-availableDays(p) = (days in pool − days absent) × fraction(p)
+availableDays(p) = Σ over days in pool, excluding absence, of fraction(p, day)
 ```
+
+**A working fraction belongs to a person on a date, not to a person.** Someone who
+works full time until February and half time afterwards was genuinely fully
+available in October, so their availability is summed day by day rather than
+scaled by one number. Nothing about the past is rewritten when their hours
+change: the points they earned are facts, and only the share they are *due* moves
+— which is why they then carry less for the rest of the period rather than being
+retroactively credited.
 
 Recorded absence covers leave, exams, congress, illness, and any rotation
 elsewhere. Each absence type carries a flag for whether it reduces availability —
@@ -404,21 +412,20 @@ That turns "operable by a stranger" into a hard requirement:
 
 ### 7.1 Two accounts, not forty
 
-Access is two shared logins: a **viewer** account for the group, and an **admin**
-account for whoever is operating this period. There is no per-person identity.
+Two roles, not forty accounts: the **operator** can edit, and **everyone else can
+only read**. Nobody has a private view.
 
 This is the right trade, and not merely the cheap one:
 
-**A shared viewer forces full transparency.** With no personal login the app
-cannot show you a private view, so it shows everyone the same one — every
+**Read-only for the group forces full transparency.** Because nobody gets a
+private view, everyone sees the same one — every
 balance, every expected share, the whole roster. That is what a fairness system
 needs. People believe the numbers because they can check everyone else's, not
 just their own; a private "here is your score" screen would invite exactly the
 suspicion the ledger exists to remove.
 
-**A shared admin still attributes.** Only one person operates at a time, so "the
-admin did it" identifies someone — as long as the app records who is operating
-this period.
+**A single editor still attributes.** Only one person operates at a time, and
+the period records who that is, so every change has a name against it.
 
 What that means for the group in practice:
 
@@ -428,14 +435,14 @@ What that means for the group in practice:
   design; "R was off sick 3–7 March" is not the group's business. The viewer sees
   availability as a count of available days, which is all the fairness maths
   needs anyway.
-- **Both passwords change on 1 October**, as part of the handover. A viewer
-  password shared across forty rotating people will leak, and rotation is the
-  only way to cut off everyone who has left.
-- **No self-service.** Absences, preferences, and swap requests all go through
-  the operator, because the app cannot tell who is asking. At forty people that
-  is a steady trickle of messages rather than a flood, and it is the main thing
-  to watch — if it becomes the operator's actual job, per-person logins are the
-  fix.
+- **Access is per person, and revoked when they leave.** Nobody inherits a
+  shared password, and taking someone off the pool takes away their access with
+  it.
+- **No self-service, for now.** Absences, preferences and swap requests go
+  through the operator. At forty people that is a steady trickle of messages
+  rather than a flood, and it is the main thing to watch — if it becomes the
+  operator's actual job, readers are already identified, so letting people
+  submit their own absences would be an addition rather than a redesign.
 
 The role and audit mechanics are in
 [TECHNICAL-README §5](TECHNICAL-README.md#5-access-roles-and-audit).
@@ -481,10 +488,10 @@ Questions for the group. The technical ones are in
 - **Holiday calendar.** Defaulting to the Belgian national calendar, plus
   whatever local closures the department observes.
 - **When does self-service become necessary?** §7.1 routes every absence,
-  preference, and swap through the operator, since shared logins cannot tell who
-  is asking. At forty people that should be a manageable trickle — but it is a
-  guess. Worth measuring over one period rather than pre-building per-person
-  accounts for a problem that may not appear.
+  preference and swap through the operator. At forty people that should be a
+  manageable trickle — but it is a guess. Worth measuring over one period before
+  building anything, especially since readers are already identified and the
+  groundwork is therefore done.
 
 ---
 
