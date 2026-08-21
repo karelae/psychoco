@@ -130,7 +130,12 @@ const template = fs.readFileSync(path.join(ROOT, 'apps-script', 'board.html'), '
 if (!template.includes('<?!= data ?>')) {
   throw new Error('board.html no longer has the <?!= data ?> placeholder — preview needs updating.');
 }
-const html = template.replace('<?!= data ?>', JSON.stringify(data, null, 2));
+// Empty, exactly as the server leaves it for everyone who is not the operator:
+// the group is not served the operator layer at all. For that side of the board
+// see scripts/preview-operator-board.mjs.
+const html = template
+  .replace('<?!= data ?>', JSON.stringify(data, null, 2))
+  .replace('<?!= operatorLayer ?>', '');
 
 const outDir = path.join(ROOT, 'preview');
 fs.mkdirSync(outDir, { recursive: true });

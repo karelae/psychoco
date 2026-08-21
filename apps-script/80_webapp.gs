@@ -22,6 +22,11 @@ function doGet() {
 
   var template = HtmlService.createTemplateFromFile('board');
   template.data = JSON.stringify(buildBoardData(gate.email));
+  // Nobody is served the operator layer yet: the panel is designed
+  // (operator.html) and its server side is not written. Until it is, this stays
+  // empty for every reader, which is also what it must stay for all but one of
+  // them afterwards.
+  template.operatorLayer = '';
   return template.evaluate()
     .setTitle('Psychoco')
     .addMetaTag('viewport', 'width=device-width, initial-scale=1')
@@ -32,6 +37,7 @@ function doGet() {
 function showBoard() {
   var template = HtmlService.createTemplateFromFile('board');
   template.data = JSON.stringify(buildBoardData(''));
+  template.operatorLayer = '';
   SpreadsheetApp.getUi().showModalDialog(
     template.evaluate().setWidth(900).setHeight(700),
     'Psychoco'

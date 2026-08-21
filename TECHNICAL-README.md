@@ -505,6 +505,12 @@ chain: a month picker, a list of people to select from, and for generation a
 preview of the resulting balance spread before anything is committed. Roughly a
 few hundred lines, no new dependencies, and it removes almost all of the typing.
 
+Partly answered: the three actions an operator does most — settling a drop-out,
+reassigning a post, recording a stretch away — now have a designed home in
+operator mode on the board (§7.2), which is where the typing hurt most. What is
+still a prompt chain is generation and publishing, and for those the sidebar
+above is still the answer.
+
 ### 7.2 Overriding an assignment from the board
 
 Today an override means typing over a cell on the Roster tab, which bypasses
@@ -524,14 +530,40 @@ the owner's permissions*, and the email allowlist becomes the only thing between
 a colleague and the ledger. Today that risk is exactly zero, because `doGet` is
 the only entry point and nothing writes. Giving that up needs:
 
-- the writable path confined to `showBoard()`, the menu dialog only the operator
-  can open, with `doGet()` hardcoding read-only;
 - every server-side mutation verifying the caller itself, never trusting a flag
   that arrived from the client;
 - an audit entry for every write, as everywhere else.
 
 Same reasoning applies to recording a drop-out or an absence by clicking a day,
 which are the obvious follow-ons.
+
+**Decided: operator mode is a mode of the board, not a second application.** An
+earlier draft of this section wanted the writable path confined to `showBoard()`,
+the dialog only the operator can open, with `doGet()` hardcoded read-only. That
+is the safer construction and it fails the case the feature exists for: a
+drop-out is settled at seven in the morning from a phone (README §5.3), and
+requiring the workbook to be open on a laptop means it gets settled from memory
+hours later instead. So the operator gets a mode switch on the board they already
+read, and the identity check carries the weight the entry point used to:
+
+- the gate is `Session.getActiveUser()` against `Period.operator`, checked
+  server-side inside **every** callable, not once at page load;
+- it **fails closed**. No identity, no operator mode — an empty email is a
+  refusal, never a fallback, which is the opposite of how `checkViewer()` treats
+  an empty allowlist;
+- the operator layer is only substituted into the page for the operator, so the
+  group is not served the markup either. That is hygiene, not the control: the
+  control is the check inside the callable.
+
+**State: the interface is designed and its server side is not written.** The
+panel is `apps-script/operator.html` — the day with its chain shift and ranked
+shortlist, the pool with the drop-out record behind a per-person call, and time
+away with the two-week rule (README §3.1.1) derived rather than asked. It is
+previewable against real numbers with `node scripts/preview-operator-board.mjs`,
+which loads the pure modules into the page in place of `google.script.run`; that
+stub is the contract the server functions have to match. Until they exist,
+`80_webapp.gs` substitutes an empty operator layer for every reader, so nothing
+is reachable and nothing writes.
 
 ### 7.3 Validation on edit
 

@@ -118,6 +118,8 @@ apps-script/
   70_menu.gs        the operator's actions
   80_webapp.gs      the read-only board + access control
   board.html        the board's markup, styles and rendering
+  operator.html     operator mode, included into board.html — UI only, no server
+                    side yet (TECHNICAL-README §7.2)
 test/               Node tests for 00-30
 ```
 

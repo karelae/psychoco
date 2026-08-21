@@ -73,6 +73,22 @@
   .rule { font-size: .84rem; margin: .7rem 0 0; }
   .rule .owedtxt { color: var(--owed); font-weight: 600; }
   .rule .overtxt { color: var(--over); font-weight: 600; }
+
+  /* The mode switch. Hidden for everybody the server did not hand an operator
+     block to, which is everybody but one person. */
+  .modes { display: none; gap: .3rem; margin: .9rem 0 0; }
+  .modes.on { display: flex; }
+  .modes button {
+    font: inherit; font-size: .85rem; min-height: 2.2rem; padding: .3rem .9rem;
+    border: 1px solid var(--line); background: var(--panel); color: var(--muted);
+    border-radius: 4px; cursor: pointer;
+  }
+  .modes button.on { background: var(--bg); color: var(--fg); font-weight: 600;
+                     box-shadow: inset 0 -2px 0 var(--accent); }
+  /* In operator mode a calendar day is a way in to that day, so it has to look
+     like one. */
+  .cal .cell.ops-click { cursor: pointer; }
+  .cal .cell.ops-click:hover { box-shadow: inset 0 0 0 2px var(--accent); }
   @media (max-width: 34rem) {
     dl.cols { grid-template-columns: 1fr; gap: .05rem; }
     dl.cols dd { margin-bottom: .45rem; }
@@ -83,6 +99,15 @@
 <div class="wrap">
   <h1>Psychoco</h1>
   <div class="sub" id="periodLine"></div>
+
+  <!-- The operator reads the same board as everyone else and switches modes to
+       change something; they are not given a different page (operator.html). -->
+  <nav class="modes" id="modes">
+    <button type="button" class="on" data-mode="viewer">My schedule</button>
+    <button type="button" data-mode="operator">Operator</button>
+  </nav>
+
+<div id="viewerMode">
   <div class="cards" id="cards"></div>
 
   <h2>Standing</h2>
@@ -118,6 +143,13 @@
   <h2>How a shift is priced</h2>
   <div class="scroll"><table id="scoring"></table></div>
   <p class="note" id="scoringNote"></p>
+</div><!-- /viewerMode -->
+
+<!-- Filled in only for the operator: the server substitutes include('operator')
+     for them and an empty string for everyone else, so the group is never even
+     served the markup. The hiding is cosmetic; the access control is that every
+     one of those calls re-checks the caller server-side. -->
+<div id="operatorMode" hidden><?!= operatorLayer ?></div>
 </div>
 
 <script>
@@ -230,6 +262,14 @@
       });
       if (isMine) cell.className += ' mine';
 
+      // For the operator, a day in the calendar is the way into that day —
+      // clicking it beats typing the date they are already looking at.
+      if (DATA.operator) {
+        cell.className += ' ops-click';
+        cell.title = 'Open ' + d.date + ' in operator mode';
+        cell.onclick = function () { openOperatorDay(d.date); };
+      }
+
       grid.appendChild(cell);
     });
 
@@ -251,6 +291,38 @@
   document.getElementById('scoringNote').textContent =
     'Points = base for the post x the day multiplier. Multipliers never compound — ' +
     'when a day is both a Sunday and a public holiday, the higher multiplier applies on its own.';
+
+  // --- operator mode -------------------------------------------------------
+  // Everything below is inert unless the server decided this reader is the
+  // operator. DATA.operator is the only switch, and the server sets it from the
+  // signed-in account, never from anything the page said.
+
+  function setMode(mode) {
+    document.getElementById('viewerMode').hidden = mode !== 'viewer';
+    document.getElementById('operatorMode').hidden = mode !== 'operator';
+    var buttons = document.getElementById('modes').getElementsByTagName('button');
+    for (var i = 0; i < buttons.length; i++) {
+      buttons[i].className = buttons[i].getAttribute('data-mode') === mode ? 'on' : '';
+    }
+  }
+
+  function openOperatorDay(iso) {
+    setMode('operator');
+    if (window.PsychocoOps) PsychocoOps.openDay(iso);
+    window.scrollTo(0, 0);
+  }
+
+  if (DATA.operator && window.PsychocoOps) {
+    var modes = document.getElementById('modes');
+    modes.className = 'modes on';
+    var modeButtons = modes.getElementsByTagName('button');
+    for (var m = 0; m < modeButtons.length; m++) {
+      modeButtons[m].onclick = (function (button) {
+        return function () { setMode(button.getAttribute('data-mode')); };
+      })(modeButtons[m]);
+    }
+    PsychocoOps.init(DATA);
+  }
 </script>
 </body>
 </html>

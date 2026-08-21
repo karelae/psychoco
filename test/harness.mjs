@@ -67,6 +67,9 @@ export function defaultConfig(psy, overrides = {}) {
       public: psy.toHundredths(values['mult.public']),
       protected: psy.toHundredths(values['mult.protected'])
     },
+    absence: {
+      minRecalibratingDays: values['absence.minRecalibratingDays']
+    },
     caps: {
       shiftsPerWeek: values['cap.shiftsPerWeek'],
       shiftsPerMonth: values['cap.shiftsPerMonth'],
