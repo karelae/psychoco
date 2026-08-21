@@ -170,36 +170,31 @@
     if (DATA.you && r.name === DATA.you) tr.className = 'you';
   });
 
-  // Your own duty first: the question this page mostly gets asked is "when am I
-  // next on", and it should not need a swipe through a calendar to answer.
-  var mineRows = [];
-  DATA.upcoming.months.forEach(function (m) {
-    m.days.forEach(function (d) {
-      ['1st', '2nd', '3rd'].forEach(function (post) {
-        if (DATA.you && d.posts[post] === DATA.you) {
-          mineRows.push({ date: d.date, post: post, label: d.label });
-        }
-      });
-    });
-  });
-
+  // Your own duty first, and all of it: the question this page mostly gets asked
+  // is "when am I next on", and it should not need a swipe through a calendar to
+  // answer. DATA.yours is uncapped, unlike the calendar below.
   var mine = document.getElementById('mine');
   if (!DATA.you) {
     document.getElementById('mineHeading').style.display = 'none';
     mine.parentNode.style.display = 'none';
   } else {
     var mineHead = mine.createTHead();
-    row(mineHead, [el('th', 'Date'), el('th', 'Post'), el('th', 'Day')]);
+    row(mineHead, [el('th', 'Date'), el('th', 'Day'), el('th', 'Post'),
+                   el('th', 'Points', 'num'), el('th', 'Day type')]);
     var mineBody = mine.createTBody();
-    if (!mineRows.length) {
-      row(mineBody, [el('td', 'Nothing rostered for you in this window.')]);
+    if (!DATA.yours.length) {
+      row(mineBody, [el('td', 'Nothing rostered for you yet.')]);
     }
-    mineRows.forEach(function (r) {
-      var tr = row(mineBody, [el('td', r.date), el('td', r.post), el('td', r.label)]);
-      if (r.label) tr.className = 'heavy';
+    var mineTotal = 0;
+    DATA.yours.forEach(function (r) {
+      mineTotal += r.points;
+      var tr = row(mineBody, [el('td', r.date), el('td', r.day), el('td', r.post),
+                              el('td', r.points.toFixed(1), 'num'), el('td', r.label)]);
+      if (r.heavy) tr.className = 'heavy';
     });
     document.getElementById('mineHeading').textContent =
-      'Your duty — ' + mineRows.length + (mineRows.length === 1 ? ' post' : ' posts');
+      'Your duty — ' + DATA.yours.length + (DATA.yours.length === 1 ? ' post' : ' posts') +
+      (DATA.yours.length ? ', ' + (Math.round(mineTotal * 10) / 10) + ' points' : '');
   }
 
   var calendar = document.getElementById('calendar');
