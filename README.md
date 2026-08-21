@@ -23,11 +23,11 @@ through the year and the people who leave before it ends.
 Every single day of the year carries three simultaneous on-call posts, and all
 three must be filled:
 
-| Post | Weekday | Weekend and public holiday |
-|---|---|---|
-| **1st** | In the hospital and working, all night | In the hospital and working, a full 24 hours |
-| **2nd** | On call — reachable, backs up the 1st when the workload spills over | Comes in to the hospital for check-ups, backs up the 1st |
-| **3rd** | On call — reachable | On call — reachable |
+| Post    | Weekday                                                                                                              | Weekend and public holiday                               | Consequences next day                                   |
+|---------|----------------------------------------------------------------------------------------------------------------------|----------------------------------------------------------|---------------------------------------------------------|
+| **1st** | In the hospital and working during the day, and working all night                                                    | In the hospital and working, a full 24 hours             | next day is a rest day — no post at all                 |
+| **2nd** | In the hospital and working during the day, also on call — reachable, backs up the 1st when the workload spills over | Comes in to the hospital for check-ups, backs up the 1st | next day is a normal post day — no rest day entitlement |
+| **3rd** | In the hospital and working during the day, also on call in case of escalation — reachable                           | On call — reachable                                      | next day is a normal post day — no rest day entitlement |
 
 Demand is therefore fixed and fully known in advance: **three posts per calendar
 day, every day — 1,095 slots per period.** There is no flexing the number of
@@ -35,14 +35,14 @@ shifts. The only question is who fills them.
 
 Note that for this amount of shifts the more people you have the less this will dominate your life. The table below illustrates this:
 
-| Pool | Utilisation | Shifts/yr | 1st calls/yr |
-|---|---|---|---|
-| 4 | 100% | 274 | 91 |
-| 6 | 67% | 183 | 61 |
-| 8 | 50% | 137 | 46 |
-| 12 | 33% | 91 | 30 |
-| 20 | 20% | 55 | 18 |
-| **40** | **10%** | **27** | **9** |
+| Pool   | Utilisation | Shifts/yr | 1st calls/yr |
+|--------|-------------|-----------|--------------|
+| 4      | 100%        | 274       | 91           |
+| 6      | 67%         | 183       | 61           |
+| 8      | 50%         | 137       | 46           |
+| 12     | 33%         | 91        | 30           |
+| 20     | 20%         | 55        | 18           |
+| **40** | **10%**     | **27**    | **9**        |
 
 *Shifts/yr* counts all three posts together, not just first calls, and
 *utilisation* is the share of the year a person spends either on duty or on a
@@ -107,11 +107,11 @@ shift; day type captures what it costs you socially to be on it.
 
 ### 2.1 Base weight by level
 
-| Level | Role | Base  |
-|---|---|-------|
-| 1st | First call — primary responsibility, highest volume and acuity | **6** |
-| 2nd | Second call — backup and escalation | **3** |
-| 3rd | Third call — lightest duty, rarely disturbed | **1** |
+| Level | Role                                                           | Base  |
+|-------|----------------------------------------------------------------|-------|
+| 1st   | First call — primary responsibility, highest volume and acuity | **6** |
+| 2nd   | Second call — backup and escalation                            | **3** |
+| 3rd   | Third call — lightest duty, rarely disturbed                   | **1** |
 
 The gaps are deliberately wide and non-linear. A first-level shift is not
 "somewhat harder" than a third — it is a different job, and the weights say so.
@@ -119,13 +119,13 @@ One first-level shift is worth six third-level shifts.
 
 ### 2.2 Day-type multiplier
 
-| Day type | Multiplier |
-|---|------------|
-| Monday – Thursday | **1.0**    |
-| Friday | **1.2**    |
-| Saturday | **1.5**    |
-| Sunday | **1.5**    |
-| Public holiday | **1.8**    |
+| Day type                                     | Multiplier |
+|----------------------------------------------|------------|
+| Monday – Thursday                            | **1.0**    |
+| Friday                                       | **1.2**    |
+| Saturday                                     | **1.5**    |
+| Sunday                                       | **1.5**    |
+| Public holiday                               | **1.8**    |
 | Protected holiday (24/25 Dec, 31 Dec, 1 Jan) | **2.2**    |
 
 **Stacking rule: multipliers do not compound. The highest applicable multiplier
@@ -135,19 +135,19 @@ makes the ledger impossible to reason about.
 
 ### 2.3 What that yields
 
-| Shift | Calculation | Points |
-|---|---|---|
-| 3rd, Tuesday | 1 × 1.0 | 1.0 |
-| 3rd, Saturday | 1 × 1.5 | 1.5 |
-| 3rd, Christmas Day | 1 × 2.2 | 2.2 |
-| 2nd, Tuesday | 3 × 1.0 | 3.0 |
-| 2nd, Saturday | 3 × 1.5 | 4.5 |
-| 2nd, Christmas Day | 3 × 2.2 | 6.6 |
-| 1st, Tuesday | 6 × 1.0 | 6.0 |
-| 1st, Friday | 6 × 1.2 | 7.2 |
-| 1st, Saturday or Sunday | 6 × 1.5 | 9.0 |
-| 1st, public holiday | 6 × 1.8 | 10.8 |
-| 1st, Christmas Day | 6 × 2.2 | 13.2 |
+| Shift                   | Calculation | Points |
+|-------------------------|-------------|--------|
+| 3rd, Tuesday            | 1 × 1.0     | 1.0    |
+| 3rd, Saturday           | 1 × 1.5     | 1.5    |
+| 3rd, Christmas Day      | 1 × 2.2     | 2.2    |
+| 2nd, Tuesday            | 3 × 1.0     | 3.0    |
+| 2nd, Saturday           | 3 × 1.5     | 4.5    |
+| 2nd, Christmas Day      | 3 × 2.2     | 6.6    |
+| 1st, Tuesday            | 6 × 1.0     | 6.0    |
+| 1st, Friday             | 6 × 1.2     | 7.2    |
+| 1st, Saturday or Sunday | 6 × 1.5     | 9.0    |
+| 1st, public holiday     | 6 × 1.8     | 10.8   |
+| 1st, Christmas Day      | 6 × 2.2     | 13.2   |
 
 On these placeholder values the spread between the lightest and heaviest shift
 comes out at **13.2×**. Whatever the group finally sets, a spread of roughly that
@@ -208,8 +208,16 @@ a member of the pool (between arrival and departure) and not on recorded
 absence, scaled by their working fraction:
 
 ```
-availableDays(p) = (days in pool − days absent) × fraction(p)
+availableDays(p) = Σ over days in pool, excluding absence, of fraction(p, day)
 ```
+
+**A working fraction belongs to a person on a date, not to a person.** Someone who
+works full time until February and half time afterwards was genuinely fully
+available in October, so their availability is summed day by day rather than
+scaled by one number. Nothing about the past is rewritten when their hours
+change: the points they earned are facts, and only the share they are *due* moves
+— which is why they then carry less for the rest of the period rather than being
+retroactively credited.
 
 Recorded absence covers leave, exams, congress, illness, and any rotation
 elsewhere. Each absence type carries a flag for whether it reduces availability —
@@ -239,20 +247,20 @@ first-level Sunday.
 
 A 92-day stretch, three people:
 
-| Person | In pool | Absence | Available days |
-|---|---|---|---|
-| A | all 92 days | — | 92 |
-| B | joins on day 32 | — | 61 |
-| C | all 92 days | 14 days leave | 78 |
+| Person | In pool         | Absence       | Available days |
+|--------|-----------------|---------------|----------------|
+| A      | all 92 days     | —             | 92             |
+| B      | joins on day 32 | —             | 61             |
+| C      | all 92 days     | 14 days leave | 78             |
 
 Total available days = 231. Total points distributed = 462.
 So `targetRate` = 462 / 231 = **2.0 points per available day**.
 
-| Person | Expected | Actual | Balance |
-|---|---|---|---|
-| A | 184.0 | 200.0 | **+16.0** |
-| B | 122.0 | 100.0 | **−22.0** |
-| C | 156.0 | 162.0 | **+6.0** |
+| Person | Expected | Actual | Balance   |
+|--------|----------|--------|-----------|
+| A      | 184.0    | 200.0  | **+16.0** |
+| B      | 122.0    | 100.0  | **−22.0** |
+| C      | 156.0    | 162.0  | **+6.0**  |
 
 B is owed the most and takes the next heavy shift — despite having the *lowest*
 raw total, and despite having done fewer shifts than everyone else. That is the
@@ -404,21 +412,20 @@ That turns "operable by a stranger" into a hard requirement:
 
 ### 7.1 Two accounts, not forty
 
-Access is two shared logins: a **viewer** account for the group, and an **admin**
-account for whoever is operating this period. There is no per-person identity.
+Two roles, not forty accounts: the **operator** can edit, and **everyone else can
+only read**. Nobody has a private view.
 
 This is the right trade, and not merely the cheap one:
 
-**A shared viewer forces full transparency.** With no personal login the app
-cannot show you a private view, so it shows everyone the same one — every
+**Read-only for the group forces full transparency.** Because nobody gets a
+private view, everyone sees the same one — every
 balance, every expected share, the whole roster. That is what a fairness system
 needs. People believe the numbers because they can check everyone else's, not
 just their own; a private "here is your score" screen would invite exactly the
 suspicion the ledger exists to remove.
 
-**A shared admin still attributes.** Only one person operates at a time, so "the
-admin did it" identifies someone — as long as the app records who is operating
-this period.
+**A single editor still attributes.** Only one person operates at a time, and
+the period records who that is, so every change has a name against it.
 
 What that means for the group in practice:
 
@@ -428,14 +435,14 @@ What that means for the group in practice:
   design; "R was off sick 3–7 March" is not the group's business. The viewer sees
   availability as a count of available days, which is all the fairness maths
   needs anyway.
-- **Both passwords change on 1 October**, as part of the handover. A viewer
-  password shared across forty rotating people will leak, and rotation is the
-  only way to cut off everyone who has left.
-- **No self-service.** Absences, preferences, and swap requests all go through
-  the operator, because the app cannot tell who is asking. At forty people that
-  is a steady trickle of messages rather than a flood, and it is the main thing
-  to watch — if it becomes the operator's actual job, per-person logins are the
-  fix.
+- **Access is per person, and revoked when they leave.** Nobody inherits a
+  shared password, and taking someone off the pool takes away their access with
+  it.
+- **No self-service, for now.** Absences, preferences and swap requests go
+  through the operator. At forty people that is a steady trickle of messages
+  rather than a flood, and it is the main thing to watch — if it becomes the
+  operator's actual job, readers are already identified, so letting people
+  submit their own absences would be an addition rather than a redesign.
 
 The role and audit mechanics are in
 [TECHNICAL-README §5](TECHNICAL-README.md#5-access-roles-and-audit).
@@ -481,10 +488,10 @@ Questions for the group. The technical ones are in
 - **Holiday calendar.** Defaulting to the Belgian national calendar, plus
   whatever local closures the department observes.
 - **When does self-service become necessary?** §7.1 routes every absence,
-  preference, and swap through the operator, since shared logins cannot tell who
-  is asking. At forty people that should be a manageable trickle — but it is a
-  guess. Worth measuring over one period rather than pre-building per-person
-  accounts for a problem that may not appear.
+  preference and swap through the operator. At forty people that should be a
+  manageable trickle — but it is a guess. Worth measuring over one period before
+  building anything, especially since readers are already identified and the
+  groundwork is therefore done.
 
 ---
 

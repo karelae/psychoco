@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html>
+<head>
+<base target="_top">
+<meta charset="utf-8">
+<style>
+  :root {
+    --bg: #ffffff; --fg: #1a1a1a; --muted: #6b6b6b; --line: #e2e2e2;
+    --owed: #0b6b3a; --owed-bg: #e8f5ee; --over: #8a2f2f; --over-bg: #fbeceb;
+    --heavy: #fff8e6; --accent: #2b4c7e; --panel: #f7f7f5; --mine-bg: #eaf1fb;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #16181a; --fg: #e9e9e9; --muted: #9aa0a6; --line: #2e3236;
+      --owed: #7ddba4; --owed-bg: #17301f; --over: #f0a3a3; --over-bg: #331b1b;
+      --heavy: #2a2618; --accent: #8fb3e8; --panel: #1d2023; --mine-bg: #1b2739;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 1.25rem; background: var(--bg); color: var(--fg);
+    font: 15px/1.5 system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  }
+  h1 { font-size: 1.35rem; margin: 0 0 .15rem; }
+  h2 { font-size: 1rem; margin: 2rem 0 .5rem; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+  .sub { color: var(--muted); font-size: .875rem; margin-bottom: .25rem; }
+  .wrap { max-width: 60rem; margin: 0 auto; }
+  .scroll { overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
+  th, td { text-align: left; padding: .45rem .6rem; border-bottom: 1px solid var(--line); white-space: nowrap; }
+  th { font-size: .78rem; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); font-weight: 600; }
+  td.num, th.num { text-align: right; }
+  tr.you { outline: 2px solid var(--accent); outline-offset: -2px; }
+  tr.heavy td { background: var(--heavy); }
+  td.mine { font-weight: 700; color: var(--accent); }
+  td.empty { color: var(--muted); }
+  .pill { display: inline-block; padding: .1rem .45rem; border-radius: 999px; font-size: .8rem; font-weight: 600; }
+  .pill.owed { color: var(--owed); background: var(--owed-bg); }
+  .pill.over { color: var(--over); background: var(--over-bg); }
+  .note { color: var(--muted); font-size: .82rem; margin-top: .5rem; }
+  .cards { display: flex; flex-wrap: wrap; gap: .5rem 1.5rem; margin: .75rem 0 0; }
+  .card .k { color: var(--muted); font-size: .78rem; text-transform: uppercase; letter-spacing: .04em; }
+  .card .v { font-size: 1.1rem; font-weight: 600; }
+
+  /* Calendar. A month grid is how people expect to read a rota; a hundred-row
+     list is the same information and unusable. Monday-first. */
+  .cal { display: grid; grid-template-columns: repeat(7, minmax(6.2rem, 1fr));
+         gap: 1px; background: var(--line); border: 1px solid var(--line);
+         border-radius: 4px; overflow: hidden; min-width: 46rem; }
+  .cal .hd { background: var(--panel); color: var(--muted); font-size: .7rem;
+             text-transform: uppercase; letter-spacing: .04em; padding: .3rem .45rem; }
+  .cal .cell { background: var(--bg); min-height: 5rem; padding: .3rem .4rem .35rem; }
+  .cal .cell.pad { background: var(--panel); min-height: 0; }
+  .cal .cell.heavy { background: var(--heavy); }
+  .cal .cell.mine { background: var(--mine-bg); box-shadow: inset 0 0 0 2px var(--accent); }
+  .cal .dom { font-weight: 600; font-size: .8rem; display: flex;
+              justify-content: space-between; align-items: baseline; gap: .3rem; }
+  .cal .tag { font-weight: 400; font-size: .62rem; text-transform: uppercase;
+              letter-spacing: .03em; color: var(--muted); }
+  .cal .duty { display: flex; gap: .3rem; font-size: .72rem; line-height: 1.35;
+               margin-top: .1rem; }
+  .cal .duty .p { color: var(--muted); flex: 0 0 .75rem; font-variant-numeric: tabular-nums; }
+  .cal .duty .n { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .cal .duty.is-mine { font-weight: 700; color: var(--accent); }
+  .cal .duty.is-mine .p { color: var(--accent); }
+  .monthLabel { font-size: .9rem; font-weight: 600; margin: 1.25rem 0 .4rem; }
+  .legend { color: var(--muted); font-size: .78rem; margin-top: .6rem; }
+  .legend b { color: var(--accent); }
+  dl.cols { display: grid; grid-template-columns: max-content 1fr; gap: .2rem .85rem;
+            font-size: .82rem; color: var(--muted); margin: .7rem 0 0; }
+  dl.cols dt { font-weight: 600; color: var(--fg); white-space: nowrap; }
+  dl.cols dd { margin: 0; }
+  .rule { font-size: .84rem; margin: .7rem 0 0; }
+  .rule .owedtxt { color: var(--owed); font-weight: 600; }
+  .rule .overtxt { color: var(--over); font-weight: 600; }
+  @media (max-width: 34rem) {
+    dl.cols { grid-template-columns: 1fr; gap: .05rem; }
+    dl.cols dd { margin-bottom: .45rem; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Psychoco</h1>
+  <div class="sub" id="periodLine"></div>
+  <div class="cards" id="cards"></div>
+
+  <h2>Standing</h2>
+  <div class="scroll"><table id="board"></table></div>
+  <dl class="cols">
+    <dt>Available days</dt>
+    <dd>Days you have been in the pool so far, less leave, scaled by your working fraction.</dd>
+    <dt>Carried</dt>
+    <dd>Points you have actually earned, for the post you really worked.</dd>
+    <dt>Due</dt>
+    <dd>Your share of everything handed out so far, in proportion to your available days.</dd>
+    <dt>Per day</dt>
+    <dd>Carried ÷ available days. Compare it with the target rate above — everyone should sit near it.</dd>
+    <dt>Balance</dt>
+    <dd>Carried − Due, in points. One weekday third call is worth 1; a first call on Christmas, 13.2.</dd>
+  </dl>
+  <p class="rule">
+    <span class="owedtxt">Negative means you are owed duty</span> and are nearer the front of the
+    queue. <span class="overtxt">Positive means you have carried more than your share.</span>
+  </p>
+  <p class="rule">
+    Balances are a redistribution, so across everyone they add up to zero.
+  </p>
+
+  <h2 id="mineHeading">Your duty</h2>
+  <div class="scroll"><table id="mine"></table></div>
+
+  <h2>Coming up</h2>
+  <div id="calendar"></div>
+  <p class="legend">Weekend and holiday days are tinted. <b>Your own duty is outlined
+  and shown in colour.</b> Posts read 1 / 2 / 3 for first, second and third call.</p>
+
+  <h2>How a shift is priced</h2>
+  <div class="scroll"><table id="scoring"></table></div>
+  <p class="note" id="scoringNote"></p>
+</div>
+
+<script>
+  var DATA = <?!= data ?>;
+
+  function el(tag, text, cls) {
+    var n = document.createElement(tag);
+    if (text !== undefined && text !== null) n.textContent = text;
+    if (cls) n.className = cls;
+    return n;
+  }
+
+  function row(parent, cells) {
+    var tr = document.createElement('tr');
+    cells.forEach(function (c) { tr.appendChild(c); });
+    parent.appendChild(tr);
+    return tr;
+  }
+
+  document.getElementById('periodLine').textContent =
+    'Period ' + DATA.period.start + ' to ' + DATA.period.end +
+    (DATA.period.operator ? ' · operated by ' + DATA.period.operator : '') +
+    ' · scoring version ' + DATA.configVersion;
+
+  var cards = document.getElementById('cards');
+  [['Points distributed', DATA.totalPoints],
+   ['Target rate', DATA.targetRate + ' / available day'],
+   ['People', DATA.rows.length],
+   ['Today', DATA.today]].forEach(function (pair) {
+    var c = el('div', null, 'card');
+    c.appendChild(el('div', pair[0], 'k'));
+    c.appendChild(el('div', pair[1], 'v'));
+    cards.appendChild(c);
+  });
+
+  var board = document.getElementById('board');
+  var head = board.createTHead();
+  row(head, [el('th', 'Name'), el('th', 'Available days', 'num'), el('th', 'Carried', 'num'),
+             el('th', 'Due', 'num'), el('th', 'Per day', 'num'), el('th', 'Balance', 'num')]);
+  var body = board.createTBody();
+  DATA.rows.forEach(function (r) {
+    var pill = el('span', (r.balance > 0 ? '+' : '') + r.balance,
+      'pill ' + (r.balance < 0 ? 'owed' : 'over'));
+    var balanceCell = el('td', null, 'num');
+    balanceCell.appendChild(pill);
+    var tr = row(body, [
+      el('td', r.name), el('td', r.availableDays, 'num'), el('td', r.points, 'num'),
+      el('td', r.expected, 'num'), el('td', r.rate, 'num'), balanceCell
+    ]);
+    if (DATA.you && r.name === DATA.you) tr.className = 'you';
+  });
+
+  // Your own duty first: the question this page mostly gets asked is "when am I
+  // next on", and it should not need a swipe through a calendar to answer.
+  var mineRows = [];
+  DATA.upcoming.months.forEach(function (m) {
+    m.days.forEach(function (d) {
+      ['1st', '2nd', '3rd'].forEach(function (post) {
+        if (DATA.you && d.posts[post] === DATA.you) {
+          mineRows.push({ date: d.date, post: post, label: d.label });
+        }
+      });
+    });
+  });
+
+  var mine = document.getElementById('mine');
+  if (!DATA.you) {
+    document.getElementById('mineHeading').style.display = 'none';
+    mine.parentNode.style.display = 'none';
+  } else {
+    var mineHead = mine.createTHead();
+    row(mineHead, [el('th', 'Date'), el('th', 'Post'), el('th', 'Day')]);
+    var mineBody = mine.createTBody();
+    if (!mineRows.length) {
+      row(mineBody, [el('td', 'Nothing rostered for you in this window.')]);
+    }
+    mineRows.forEach(function (r) {
+      var tr = row(mineBody, [el('td', r.date), el('td', r.post), el('td', r.label)]);
+      if (r.label) tr.className = 'heavy';
+    });
+    document.getElementById('mineHeading').textContent =
+      'Your duty — ' + mineRows.length + (mineRows.length === 1 ? ' post' : ' posts');
+  }
+
+  var calendar = document.getElementById('calendar');
+  DATA.upcoming.months.forEach(function (month) {
+    var label = el('div', month.label, 'monthLabel');
+    calendar.appendChild(label);
+
+    var scroller = el('div', null, 'scroll');
+    var grid = el('div', null, 'cal');
+
+    DATA.upcoming.weekdays.forEach(function (w) { grid.appendChild(el('div', w, 'hd')); });
+
+    // Blank cells so the first of the month lands under the right weekday.
+    for (var b = 0; b < month.days[0].weekday; b++) {
+      grid.appendChild(el('div', null, 'cell pad'));
+    }
+
+    month.days.forEach(function (d) {
+      var cell = el('div', null, 'cell' + (d.heavy ? ' heavy' : ''));
+      var head = el('div', null, 'dom');
+      head.appendChild(el('span', d.dom));
+      if (d.label) head.appendChild(el('span', d.label, 'tag'));
+      cell.appendChild(head);
+
+      var isMine = false;
+      ['1st', '2nd', '3rd'].forEach(function (post, i) {
+        var name = d.posts[post];
+        var line = el('div', null, 'duty');
+        line.appendChild(el('span', (i + 1), 'p'));
+        line.appendChild(el('span', name || '—', 'n'));
+        if (DATA.you && name === DATA.you) { line.className = 'duty is-mine'; isMine = true; }
+        cell.appendChild(line);
+      });
+      if (isMine) cell.className += ' mine';
+
+      grid.appendChild(cell);
+    });
+
+    scroller.appendChild(grid);
+    calendar.appendChild(scroller);
+  });
+
+  var sc = document.getElementById('scoring');
+  var scHead = sc.createTHead();
+  var kinds = Object.keys(DATA.scoring.multipliers);
+  row(scHead, [el('th', 'Post')].concat(kinds.map(function (k) { return el('th', k, 'num'); })));
+  var scBody = sc.createTBody();
+  ['1st', '2nd', '3rd'].forEach(function (post) {
+    var base = DATA.scoring.base[post];
+    row(scBody, [el('td', post + ' (base ' + base + ')')].concat(kinds.map(function (k) {
+      return el('td', Math.round(base * DATA.scoring.multipliers[k] * 100) / 100, 'num');
+    })));
+  });
+  document.getElementById('scoringNote').textContent =
+    'Points = base for the post x the day multiplier. Multipliers never compound — ' +
+    'when a day is both a Sunday and a public holiday, the higher multiplier applies on its own.';
+</script>
+</body>
+</html>

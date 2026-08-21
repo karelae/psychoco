@@ -1,0 +1,13 @@
+{
+  "name": "psychoco",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test test/",
+    "demo": "node scripts/demo.mjs",
+    "push": "clasp push",
+    "deploy": "clasp deploy",
+    "preview": "node scripts/preview.mjs",
+    "preview:operator": "node scripts/preview-operator.mjs"
+  }
+}
