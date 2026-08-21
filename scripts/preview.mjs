@@ -64,8 +64,31 @@ const data = {
   // Mirrors upcomingCalendar() in 80_webapp.gs. The real board starts from
   // today; here "today" is the last day generated, so show from December on
   // instead of an empty calendar.
-  upcoming: upcomingCalendar('2026-12-01', 150)
+  upcoming: upcomingCalendar('2026-12-01', 150),
+  // Mirrors yourDuty() in 80_webapp.gs — uncapped on purpose.
+  yours: yourDuty('2026-12-01', YOU)
 };
+
+function yourDuty(fromIso, name) {
+  if (!name) return [];
+  return s.roster
+    .filter((r) => r.name === name && r.date >= fromIso)
+    .sort((a, b) => (a.date === b.date
+      ? psy.POST_RANK[a.post] - psy.POST_RANK[b.post]
+      : (a.date < b.date ? -1 : 1)))
+    .map((r) => {
+      const holiday = psy.isHolidayDay(r.date, s.holidays);
+      const heavy = psy.isHeavyDay(r.date, s.holidays);
+      return {
+        date: r.date,
+        day: psy.DOW_SHORT[psy.isoDayOfWeek(r.date)],
+        post: r.post,
+        points: psy.fromHundredths(psy.pointsFor(r.post, r.date, s.holidays, s.config)),
+        label: holiday ? 'holiday' : (heavy ? 'weekend' : ''),
+        heavy
+      };
+    });
+}
 
 function upcomingCalendar(fromIso, maxDays) {
   const byDate = new Map();

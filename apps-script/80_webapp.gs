@@ -81,6 +81,7 @@ function buildBoardData(viewerEmail) {
 
   var emailToName = {};
   model.people.forEach(function (p) { if (p.email) emailToName[p.email] = p.name; });
+  var you = emailToName[(viewerEmail || '').toLowerCase()] || null;
 
   var rows = board.rows.map(function (r) {
     return {
@@ -95,10 +96,16 @@ function buildBoardData(viewerEmail) {
 
   var upcoming = upcomingCalendar(model, today, 150);
 
+  // Deliberately uncapped, unlike the calendar. Somebody's own duty is the one
+  // thing they must be able to see all of — you cannot plan a holiday around a
+  // list that stops after five months. It is small anyway: around 27 posts a
+  // year at this pool size.
+  var yours = yourDuty(model, today, you);
+
   return {
     period: { start: model.period.start, end: model.period.end, operator: model.period.operator },
     today: today,
-    you: emailToName[(viewerEmail || '').toLowerCase()] || null,
+    you: you,
     targetRate: fromHundredths(board.targetRateH),
     totalPoints: fromHundredths(board.totalPointsH),
     configVersion: model.config.version,
@@ -114,8 +121,32 @@ function buildBoardData(viewerEmail) {
       }, {})
     },
     rows: rows,
+    yours: yours,
     upcoming: upcoming
   };
+}
+
+/** Everything one person is rostered to from `fromIso` onward. No limit. */
+function yourDuty(model, fromIso, name) {
+  if (!name) return [];
+
+  return model.roster
+    .filter(function (r) { return r.name === name && r.date >= fromIso; })
+    .sort(function (a, b) {
+      if (a.date !== b.date) return a.date < b.date ? -1 : 1;
+      return POST_RANK[a.post] - POST_RANK[b.post];
+    })
+    .map(function (r) {
+      var holiday = isHolidayDay(r.date, model.holidayKindByDate);
+      return {
+        date: r.date,
+        day: DOW_SHORT[isoDayOfWeek(r.date)],
+        post: r.post,
+        points: fromHundredths(pointsFor(r.post, r.date, model.holidayKindByDate, model.config)),
+        label: holiday ? 'holiday' : (isHeavyDay(r.date, model.holidayKindByDate) ? 'weekend' : ''),
+        heavy: isHeavyDay(r.date, model.holidayKindByDate)
+      };
+    });
 }
 
 var MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July',

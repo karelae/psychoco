@@ -463,10 +463,53 @@ The role and audit mechanics are in
 
 ---
 
-## 9. Open questions
+## 9. Business questions
 
-Questions for the group. The technical ones are in
-[TECHNICAL-README §6](TECHNICAL-README.md#6-open-questions).
+Decisions that belong to the group rather than to whoever builds this. Technical
+questions are in [TECHNICAL-README §6](TECHNICAL-README.md#6-open-questions).
+
+### 9.1 How far ahead should the roster be known?
+
+**Deferred, and the most consequential question left.**
+
+Two forces pull against each other. **Fairness wants to decide late** — every
+week that passes brings more known leave, arrivals and departures, so a roster
+generated nearer the date is better balanced. **People want to know early** — a
+date you *might* have to work is nearly worthless for planning, while a date you
+*will* work lets you book a holiday, a course, a wedding.
+
+Nothing about the system forces a particular answer. Demand is completely certain
+— three posts a day, every day, forever — so the limit is not the algorithm, it
+is how far ahead people tell the operator about their availability.
+
+Four things need deciding, roughly in this order:
+
+1. **How much certainty do people actually need?** A rolling window of one
+   committed month plus two provisional ones gives roughly 8–12 weeks of
+   certainty, or about seven known posts each. Is that enough to plan a life
+   around, or does the group need longer?
+2. **Does committed mean committed?** A published month that can still change is
+   worth much less than one that cannot. But holding a month fixed means ignoring
+   leave that arrives afterwards, and handling it as a one-off swap instead.
+3. **How should the Christmas and New Year block be handled?** It is the extreme
+   case on both axes: the duty people most need to know early, *and* the most
+   expensive to get wrong at 13.2 points for a first call. Points can compensate
+   someone for working Christmas; nothing can give them Christmas back. The
+   options are to let the scheduler place it like any other duty, to allocate it
+   as a deliberate draw at the start of the period with the result recorded, or
+   to agree it by hand. A recorded draw is the most defensible socially — nobody
+   can claim the algorithm was biased — but the group has to accept the outcome
+   sight unseen.
+4. **How much churn is tolerable?** If provisional months are regenerated every
+   cycle, dates shuffle and people learn to ignore anything not yet committed.
+   The system can be told to prefer leaving existing assignments alone, at the
+   cost of using less of the late information. That is a dial, and the group
+   should say roughly where it sits.
+
+Until this is settled, the operator generates one month at a time and nothing is
+frozen — see [TECHNICAL-README §7.5](TECHNICAL-README.md#75-generating-further-ahead)
+for what implementing an answer would involve, and for two rough edges the
+current behaviour has in the meantime.
 
 - **Setting the nine numbers.** Deferred by design — the group fixes the weights
   and multipliers later, and §2 carries placeholders until they do. Two things to
