@@ -195,6 +195,9 @@ function parseConfig(raw) {
       '3rd': toHundredths(need('base.3rd'))
     },
     multH: multH,
+    absence: {
+      minRecalibratingDays: num('absence.minRecalibratingDays', 14)
+    },
     caps: {
       shiftsPerWeek: num('cap.shiftsPerWeek', 0),
       shiftsPerMonth: num('cap.shiftsPerMonth', 0),

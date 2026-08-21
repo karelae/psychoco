@@ -59,45 +59,49 @@ test('coverage', async (t) => {
     }
   });
 
-  // README §5.1.5 — the rest day follows a 1st and nothing else.
-  await t.test('should_leave_the_next_day_free_when_someone_holds_a_1st', () => {
+  // README §5.1.5 — nobody is on guard two days running, whichever post it is.
+  await t.test('should_never_give_anyone_posts_on_consecutive_days', () => {
     const held = heldByPerson(result.assignments);
-    for (const a of result.assignments) {
-      if (a.post !== '1st') continue;
-      const next = psy.isoAddDays(a.date, 1);
-      assert.ok(
-        !held[a.name][next],
-        a.name + ' held ' + held[a.name][next] + ' on ' + next + ' after a 1st on ' + a.date
-      );
+    for (const name of Object.keys(held)) {
+      for (const date of Object.keys(held[name])) {
+        const next = psy.isoAddDays(date, 1);
+        assert.ok(
+          !held[name][next],
+          name + ' held ' + held[name][date] + ' on ' + date + ' and ' +
+          held[name][next] + ' on ' + next
+        );
+      }
     }
   });
 
-  // Only a 1st earns a rest day, so 2nd and 3rd must be allowed on consecutive
-  // days. A 20-person pool never shows this because the spacing objective
-  // spreads posts out, so force it: at the capacity floor of 4 everybody is
-  // saturated and consecutive days are unavoidable.
-  await t.test('should_allow_consecutive_days_when_posts_are_2nd_or_3rd', () => {
+  // A 20-person pool honours the rule for unrelated reasons — the spacing
+  // objective spreads posts apart anyway — so it proves nothing about the
+  // constraint. Force the issue with a pool close to saturation, every soft
+  // objective and volume cap switched off, so only the hard rule is left to
+  // stop consecutive days (see .claude/CLAUDE.md on proving constraints).
+  await t.test('should_never_give_anyone_consecutive_days_when_the_pool_is_saturated', () => {
     const cfg = defaultConfig(psy, {
       search: { iterations: 0 },
       caps: { shiftsPerWeek: 0, shiftsPerMonth: 0, minWeekendGapDays: 0 },
       weights: { categoryParity: 0, spacing: 0 }
     });
-    const saturated = plain(psy.generateRoster(input(pool(4), { config: cfg })));
+    const saturated = plain(psy.generateRoster(input(pool(9), { config: cfg })));
     const held = heldByPerson(saturated.assignments);
 
-    let consecutive = 0;
+    let busiest = 0;
     for (const name of Object.keys(held)) {
-      for (const date of Object.keys(held[name])) {
-        if (held[name][psy.isoAddDays(date, 1)]) {
-          assert.notEqual(
-            held[name][date], '1st',
-            name + ' worked the day after a 1st on ' + date
-          );
-          consecutive++;
-        }
+      const dates = Object.keys(held[name]);
+      busiest = Math.max(busiest, dates.length);
+      for (const date of dates) {
+        assert.ok(
+          !held[name][psy.isoAddDays(date, 1)],
+          name + ' is on guard on ' + date + ' and the day after'
+        );
       }
     }
-    assert.ok(consecutive > 0, 'rest rule is over-applied: 2nd and 3rd carry no rest day');
+    // Guard against the test passing because nobody worked much: at N=9 over 31
+    // days somebody must be carrying close to every other day.
+    assert.ok(busiest >= 10, 'pool is not saturated enough to prove anything (busiest = ' + busiest + ')');
   });
 });
 
@@ -238,15 +242,29 @@ test('failing loudly', async (t) => {
     );
   });
 
-  await t.test('should_succeed_with_four_people_when_three_is_impossible', () => {
-    // The capacity floor is exactly 4 (TECHNICAL-README §4.4), so a pool of 4
-    // must work — with the volume caps relaxed, since at N=4 everyone is
-    // saturated by definition.
+  await t.test('should_throw_when_the_pool_is_under_the_capacity_floor', () => {
+    // Every post now blocks the following day, so the three posts cost 6D
+    // person-days against a supply of N x D: the floor is 6, and 5 cannot work
+    // under any arrangement (TECHNICAL-README §4.4).
     const cfg = defaultConfig(psy, {
       search: { iterations: 500 },
       caps: { shiftsPerWeek: 0, shiftsPerMonth: 0, minWeekendGapDays: 0 }
     });
-    const result = plain(psy.generateRoster(input(pool(4), { config: cfg })));
+    assert.throws(() => psy.generateRoster(input(pool(5), { config: cfg })),
+      (err) => err.name === 'SchedulingError');
+  });
+
+  await t.test('should_fill_a_month_when_the_pool_clears_the_greedy_seed', () => {
+    // The floor of 6 is what arithmetic allows, not what greedy seeding finds:
+    // saturation at N=6 needs the exact alternating pattern and the seed does
+    // not reserve it. Nine is where a month becomes reliably fillable, and the
+    // gap is documented in TECHNICAL-README §4.4 rather than worked around,
+    // because the real pool is forty.
+    const cfg = defaultConfig(psy, {
+      search: { iterations: 500 },
+      caps: { shiftsPerWeek: 0, shiftsPerMonth: 0, minWeekendGapDays: 0 }
+    });
+    const result = plain(psy.generateRoster(input(pool(9), { config: cfg })));
     assert.equal(result.assignments.length, 93);
     for (const a of result.assignments) assert.ok(a.name);
   });

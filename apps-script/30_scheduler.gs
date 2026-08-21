@@ -55,14 +55,16 @@ function placementBlocker(state, slotIdx, name) {
     return 'already holds ' + held[slot.date] + ' that day';
   }
 
-  // Post-call rest, in both directions: a 1st the day before blocks today, and
-  // taking a 1st today requires tomorrow to be free (README §5.1.5).
-  if (held[isoAddDays(slot.date, -1)] === '1st') {
-    return 'rest day after a 1st on ' + isoAddDays(slot.date, -1);
+  // Nobody is on guard two days running, whichever posts they are — checked in
+  // both directions, since a slot may be filled before its neighbour
+  // (README §5.1.5).
+  var prevDay = isoAddDays(slot.date, -1);
+  var nextDay = isoAddDays(slot.date, 1);
+  if (held[prevDay]) {
+    return 'held ' + held[prevDay] + ' on ' + prevDay + ', and nobody is on guard two days running';
   }
-  if (slot.post === '1st' && held[isoAddDays(slot.date, 1)]) {
-    return 'would owe a rest day on ' + isoAddDays(slot.date, 1) + ', already holds ' +
-           held[isoAddDays(slot.date, 1)];
+  if (held[nextDay]) {
+    return 'holds ' + held[nextDay] + ' on ' + nextDay + ', and nobody is on guard two days running';
   }
 
   var caps = state.config.caps;

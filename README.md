@@ -5,8 +5,8 @@ A shift-distribution system for a rotating pool of psychiatry co-assistants.
 Psychoco turns "who does the next on-call shift?" from a negotiation into a
 calculation. It scores every shift by how demanding it actually is, keeps a
 running ledger per person, and generates a roster that spreads the real burden
-evenly across everyone available — including the people who arrive halfway
-through the year and the people who leave before it ends.
+evenly across everyone available — accounting for part-time hours, long absences,
+and the occasional person who arrives or leaves part-way through.
 
 > **Looking for the technical side?** The data model, the scheduling algorithm,
 > the constraint and configuration mechanics, and the access and audit design are
@@ -25,29 +25,39 @@ three must be filled:
 
 | Post    | Weekday                                                                                                              | Weekend and public holiday                               | Consequences next day                                   |
 |---------|----------------------------------------------------------------------------------------------------------------------|----------------------------------------------------------|---------------------------------------------------------|
-| **1st** | In the hospital and working during the day, and working all night                                                    | In the hospital and working, a full 24 hours             | next day is a rest day — no post at all                 |
-| **2nd** | In the hospital and working during the day, also on call — reachable, backs up the 1st when the workload spills over | Comes in to the hospital for check-ups, backs up the 1st | next day is a normal post day — no rest day entitlement |
-| **3rd** | In the hospital and working during the day, also on call in case of escalation — reachable                           | On call — reachable                                      | next day is a normal post day — no rest day entitlement |
+| **1st** | In the hospital and working during the day, and working all night                                                    | In the hospital and working, a full 24 hours             | no guard the next day                                   |
+| **2nd** | In the hospital and working during the day, also on call — reachable, backs up the 1st when the workload spills over | Comes in to the hospital for check-ups, backs up the 1st | no guard the next day                                   |
+| **3rd** | In the hospital and working during the day, also on call in case of escalation — reachable                           | On call — reachable                                      | no guard the next day                                   |
 
 Demand is therefore fixed and fully known in advance: **three posts per calendar
 day, every day — 1,095 slots per period.** There is no flexing the number of
 shifts. The only question is who fills them.
 
+**The 1st is the night guard.** There is no separate night post — the vocabulary
+differs but the duty is the same one, which is why the scoring has three levels
+and not four.
+
+**Nobody is on guard two days running, whichever post they held.** The day after
+any duty is guard-free, and that is the only consequence the system tracks. What
+somebody does on their ordinary clinical day — whether they are in at all, and
+what they are doing — is outside Psychoco entirely (§8). "Guard-free" therefore
+means free of *guard*, not a day off.
+
 Note that for this amount of shifts the more people you have the less this will dominate your life. The table below illustrates this:
 
 | Pool   | Utilisation | Shifts/yr | 1st calls/yr |
 |--------|-------------|-----------|--------------|
-| 4      | 100%        | 274       | 91           |
-| 6      | 67%         | 183       | 61           |
-| 8      | 50%         | 137       | 46           |
-| 12     | 33%         | 91        | 30           |
-| 20     | 20%         | 55        | 18           |
-| **40** | **10%**     | **27**    | **9**        |
+| 6      | 100%        | 183       | 61           |
+| 8      | 75%         | 137       | 46           |
+| 12     | 50%         | 91        | 30           |
+| 20     | 30%         | 55        | 18           |
+| **40** | **15%**     | **27**    | **9**        |
 
 *Shifts/yr* counts all three posts together, not just first calls, and
-*utilisation* is the share of the year a person spends either on duty or on a
-post-1st rest day. Four people is the hard floor, and it is exactly saturated —
-no free days at all, ever. The derivation is in
+*utilisation* is the share of the year a person spends either on guard or on the
+guard-free day that follows. Six people is the hard floor, and it is exactly
+saturated — three on guard, three recovering, alternating forever, with no room
+for a single absence. The derivation is in
 [TECHNICAL-README §4.4](TECHNICAL-README.md#44-the-capacity-floor).
 
 ### 1.2 Escalation: everyone moves up
@@ -76,9 +86,15 @@ roster that is arithmetically equal and obviously unfair — the person who drew
 three weekend firsts carries several times the load of the person who drew
 three midweek thirds.
 
-The pool also churns. Co-assistants rotate in and out continuously, take leave,
-sit exams, and work different fractions. Any fairness rule that assumes a fixed
-group present for a fixed period breaks immediately.
+**Nor is everyone equally available.** The cohort is semi-stable: people commit
+for the upcoming year, so the group that starts a period is broadly the group
+that finishes it, and turnover happens at the 1 October boundary rather than
+continuously. But *within* a period they work different fractions, take long
+leave, sit exams, and go on rotations elsewhere — and occasionally somebody does
+arrive or leave part-way through. Those are exceptions rather than the rule, which
+is precisely why a fairness rule has to handle them: a rule that only works for
+the typical case quietly penalises whoever falls outside it, and there is nobody
+left to complain to once the period is over.
 
 Psychoco addresses both: **weight each shift by its true cost**, then
 **balance those weights against how much of the period each person was
@@ -179,15 +195,21 @@ was fair.
 
 Three knock-on rules:
 
-- **The rest day follows worked duty, not rostered duty.** Since only a 1st earns
-  a rest day (§5.1), an escalation moves the entitlement: Q, rostered to 2nd,
-  worked a 1st and is now owed tomorrow off, which the roster never planned for.
-  R, who stepped up to 2nd, gets no rest day. P, who dropped out, needs none.
-  Applying rest to the roster instead would hand the day off to the wrong person
-  and leave the one who actually worked the night on duty.
-- **A drop-out day also leaves the dropper's availability.** P scores nothing,
-  and the day is recorded as absence, so P's expected share drops with it (§3.1).
-  Being ill is not a debt.
+- **The guard-free day follows worked duty, not rostered duty.** Q and R both
+  worked, so both are clear tomorrow — and they already were, because they were
+  rostered today and §5.1.5 blocks the day after any post. **An escalation
+  therefore costs the roster nothing.** Everybody who shifts up was on guard
+  today anyway, so nobody acquires an entitlement the roster did not already
+  plan around. The one person who can clash is S, called in at 3rd without
+  being rostered: they take a duty the roster did not know about, so anyone
+  already on guard tomorrow is excluded from the shortlist that picks them
+  (§5.3). P, who dropped out and worked nothing, is not blocked at all — they
+  are simply ill, and their absence covers today only.
+- **A drop-out does not lower what the dropper is expected to carry.** P scores
+  nothing for the duty, and P's availability does not move — a single day is far
+  under the two-week threshold that recalibrates a baseline (§3.1.1). So P's
+  balance falls against an unchanged target, which puts P further up the order
+  for the next duty. That is the whole correction, and it happens by itself.
 - **Escalations are recorded events** — date, who dropped out, the resulting
   chain — not silent edits to the original assignment. The roster stays visible
   as what was planned; the ledger says what happened.
@@ -208,7 +230,7 @@ a member of the pool (between arrival and departure) and not on recorded
 absence, scaled by their working fraction:
 
 ```
-availableDays(p) = Σ over days in pool, excluding absence, of fraction(p, day)
+availableDays(p) = Σ over days in pool, excluding recalibrating absence, of fraction(p, day)
 ```
 
 **A working fraction belongs to a person on a date, not to a person.** Someone who
@@ -220,8 +242,54 @@ change: the points they earned are facts, and only the share they are *due* move
 retroactively credited.
 
 Recorded absence covers leave, exams, congress, illness, and any rotation
-elsewhere. Each absence type carries a flag for whether it reduces availability —
-some genuinely should, and some (a single day off in lieu) arguably should not.
+elsewhere. Two separate things can follow from an absence, and they are not the
+same decision:
+
+- **It is not rostered over.** Nobody is given a duty on a day they are away.
+- **It recalibrates the baseline.** The absent days leave `availableDays(p)`, so
+  what the person is expected to carry drops with them.
+
+Every recorded absence does the first. **Only an absence of two weeks or more
+does the second.**
+
+### 3.1.1 The two-week threshold
+
+Short absences do not recalibrate anything, and mostly should not be entered at
+all.
+
+The reason is that the arithmetic is not worth the work. A week of leave is under
+2% of a full-year availability — on the placeholder weights of §2, about two
+points against an annual share of roughly 110, which is a third of one weekday
+first call. Recording it buys the ledger precision it cannot use, and costs the
+operator a data-entry task per person per month to get it.
+
+| Absence                                          | Rostered over? | Recalibrates?         |
+|--------------------------------------------------|----------------|-----------------------|
+| Same-day drop-out                                | no             | **no**                |
+| A few days off, a long weekend, exams, a congress | no            | **no**                |
+| Two weeks or more — long sick leave, injury, an external rotation | no | **yes** |
+| Part-time hours                                  | n/a            | yes, via the fraction |
+
+Two consequences worth stating plainly.
+
+**A short absence is only worth entering if it is known before the block it falls
+in is generated.** Then it costs one row and the scheduler simply routes around
+it. Once the block is published the duty already belongs to someone, and a week
+of leave is settled by trading that duty away rather than by re-planning the
+month — see §9 on swaps.
+
+**The threshold is also the whole rule for someone who calls in sick on the
+morning.** They score nothing for the duty they dropped (§2.4) and their expected
+share does not move, so their balance falls against an unchanged target and they
+come up sooner in the ordering by themselves. Nobody has to police it. If the
+illness turns out to run past two weeks, the tail is entered as ordinary sick
+leave and recalibrates from that point on; the drop-out day itself never does.
+
+**Two weeks is a placeholder.** The shape of the rule is settled; the size of
+the window is a decision for the group and is open in §9. It is configuration
+rather than a constant in the code
+([TECHNICAL-README §3.1](TECHNICAL-README.md#31-configuration-is-data-not-code)),
+so moving it is an edit on the Config tab and not a deploy.
 
 ### 3.2 Expected share and balance
 
@@ -277,9 +345,10 @@ across a boundary would mean settling them against a different set of people.
 
 Two consequences worth stating plainly:
 
-**Arrivals and departures are the normal case, not the exception.** Someone
-joining in February starts at zero and is immediately expected to carry only a
-February-to-September share. No catching up, no head start.
+**Arrivals and departures are handled, not assumed.** They are the exception —
+the cohort commits for the year — but when one happens it needs no special
+treatment. Someone joining in February starts at zero and is immediately expected
+to carry only a February-to-September share. No catching up, no head start.
 
 **Fairness has to hold continuously, not just on 30 September.** A person who
 leaves in March with a +40 balance has been treated unfairly and it can never be
@@ -310,11 +379,12 @@ These hold without exception. A roster that breaks any of them is not a roster.
 3. **One post per person per day.**
 4. **Availability.** No assignment during recorded absence or outside the
    person's arrival–departure window.
-5. **Post-call rest — after a 1st only.** A first call is followed by a rest day
-   on which the person takes no post at all. Second and third calls carry no rest
-   day; someone can hold 3rd on consecutive days, or 3rd then 2nd. This asymmetry
-   matters more than it looks — it is what sets the minimum workable pool size
-   ([TECHNICAL-README §4.4](TECHNICAL-README.md#44-the-capacity-floor)).
+5. **Never two days running.** Nobody holds a post on the day after they held
+   one, whichever posts those are — no 1st then 3rd, no 3rd then 3rd, nothing.
+   The day after any duty is guard-free (§1.1). This is the rule that sets the
+   minimum workable pool size
+   ([TECHNICAL-README §4.4](TECHNICAL-README.md#44-the-capacity-floor)), and it
+   applies to the post actually **worked**, not the one rostered — see §2.4.
 6. **Volume caps.** Maximum shifts per week and per month; minimum gap between
    weekend shifts.
 
@@ -340,8 +410,15 @@ A drop-out is not a re-planning exercise, it is a decision someone has to make
 in two minutes at seven in the morning. Psychoco's job is to make it fast and
 defensible: record the drop-out, apply the escalation chain automatically, and
 hand the operator a ranked shortlist for the one post that is now vacant —
-available, escalation-ready, largest deficit first. A human makes the call; the
-system records who actually took it and re-prices the day per §2.4.
+available, escalation-ready, not on guard either side of today, largest deficit
+first. A human makes the call; the system records who actually took it and
+re-prices the day per §2.4.
+
+That shortlist is the whole of the disruption. Because nobody is ever on guard
+two days running (§5.1.5), everyone in the escalation chain already had tomorrow
+free, so the chain shifts up without touching a single other day of the roster.
+Only the person called in at the vacant post is new, and excluding anyone on
+guard the day before or after keeps that from cascading.
 
 ---
 
@@ -360,7 +437,10 @@ hand.
 
 ### 6.3 Balance is a rate, not a total
 Per §3. Every alternative — equal counts, equal totals, equal weekends —
-punishes part-time work and mid-period arrival, which describes most of the pool.
+punishes part-time hours, long leave, and mid-period arrival. Those describe a
+minority of the pool in any given period, which is the argument *for* the rate
+rather than against it: a minority carrying an unfair share is exactly the
+complaint that never gets loud enough to fix itself.
 
 ### 6.4 No carry-over between periods
 Per §4. Debts settle against the group that incurred them.
@@ -375,6 +455,64 @@ Per §7. The person running Psychoco changes every year and will not have been
 trained by the last one. Every recurring task — new cohort, new period,
 drop-out, override — has to be doable from the interface by someone seeing it
 for the first time. No config files, no command line, no tribal knowledge.
+
+### 6.7 One flat rule, not a rest-day entitlement
+
+Nobody is on guard two days running, whatever post they held. The rejected
+alternative was to attach the guard-free day to a 1st alone, on the reasoning
+that a 1st works the night and a 3rd mostly does not.
+
+The flat rule wins on three counts, and the first is the one that decided it:
+
+- **It is a rule people can hold in their heads.** "Never two days running" needs
+  no table and no exceptions, which matters for a system whose real constraint is
+  social acceptance rather than optimality (§6.5). "A rest day, but only after a
+  1st, and it follows the post you worked rather than the one you were rostered"
+  is three rules pretending to be one.
+- **It makes escalations free.** Under the asymmetric rule, a 2nd who steps up to
+  1st acquires an entitlement to a day the roster had already promised to them as
+  a duty, so every drop-out forced a second substitution the day after. Under the
+  flat rule everybody in the chain was already clear (§2.4). A rule that removes
+  a whole class of operational scramble is worth more than the slots it costs.
+- **It costs slack the pool has.** The price is the capacity floor moving from
+  four people to six ([TECHNICAL-README §4.4](TECHNICAL-README.md#44-the-capacity-floor)).
+  At a real pool of forty that is the difference between 10% and 15%
+  utilisation — invisible.
+
+What the flat rule deliberately does *not* do is track anything about ordinary
+clinical work. Whether somebody is in the hospital the day after a duty, and what
+they do there, is not Psychoco's business (§8). The system knows about guard and
+nothing else, which is why the day after is described as guard-free rather than
+as rest.
+
+### 6.8 Christmas is not special-cased
+
+The most expensive duties in the year are placed by the scheduler like any
+others. No draw, no hand-allocation, no protected block.
+
+The argument for special-casing was social rather than arithmetic: points can
+compensate somebody for working Christmas, but nothing gives them Christmas
+back, so a recorded draw would at least be unimpeachable. It was rejected
+because the compensation is real and the period is long. A Christmas first call
+is 13.2 points against an annual share of roughly 110 — an eighth of the year's
+load landing in one night — and the nine months that follow are more than enough
+room for the balance to settle. Whoever draws it carries visibly less afterwards,
+which is exactly what the ledger is for.
+
+Two things make this safe rather than merely convenient, and both are worth
+knowing because they would not hold in a smaller pool:
+
+- **Category parity already spreads holidays.** Holiday count is balanced as its
+  own objective alongside points ([TECHNICAL-README §4.2](TECHNICAL-README.md#42-what-gets-traded-off)),
+  so the scheduler resists giving one person two holiday posts while another has
+  none. What it does *not* do is separate a protected day from an ordinary public
+  holiday — a Christmas 1st and an Ascension Day 3rd are the same category to it.
+  With four protected days, twelve protected slots and about forty people, that
+  distinction does not get a chance to bite. At a pool of eight it would.
+- **Nobody is here for two Christmases.** Balances do not carry across periods
+  (§6.4), so the system has no memory of who worked last year — which would be a
+  real hole if the pool were stable across period boundaries. It is not: the
+  cohort turns over annually, so almost nobody is present for a second one.
 
 The decisions behind the data model, the algorithm, and the access design are in
 [TECHNICAL-README](TECHNICAL-README.md).
@@ -435,6 +573,13 @@ What that means for the group in practice:
   design; "R was off sick 3–7 March" is not the group's business. The viewer sees
   availability as a count of available days, which is all the fairness maths
   needs anyway.
+- **Drop-out patterns are the operator's alone.** Same-day drop-outs are recorded
+  as their own event type, which makes it possible to see that one person has
+  called in sick before four weekend firsts running. That is worth an operator
+  being able to look at, and it is *not* a board feature under any circumstances —
+  it is the most sensitive thing in the workbook and it names individuals. The
+  point mechanism already handles the fairness consequence on its own (§2.4); the
+  pattern is for a human conversation, not a public leaderboard.
 - **Access is per person, and revoked when they leave.** Nobody inherits a
   shared password, and taking someone off the pool takes away their access with
   it.
@@ -470,8 +615,6 @@ questions are in [TECHNICAL-README §6](TECHNICAL-README.md#6-open-questions).
 
 ### 9.1 How far ahead should the roster be known?
 
-**Deferred, and the most consequential question left.**
-
 Two forces pull against each other. **Fairness wants to decide late** — every
 week that passes brings more known leave, arrivals and departures, so a roster
 generated nearer the date is better balanced. **People want to know early** — a
@@ -482,35 +625,67 @@ Nothing about the system forces a particular answer. Demand is completely certai
 — three posts a day, every day, forever — so the limit is not the algorithm, it
 is how far ahead people tell the operator about their availability.
 
-Four things need deciding, roughly in this order:
+**Two of the four sub-questions are now settled.**
 
-1. **How much certainty do people actually need?** A rolling window of one
-   committed month plus two provisional ones gives roughly 8–12 weeks of
-   certainty, or about seven known posts each. Is that enough to plan a life
-   around, or does the group need longer?
-2. **Does committed mean committed?** A published month that can still change is
-   worth much less than one that cannot. But holding a month fixed means ignoring
-   leave that arrives afterwards, and handling it as a one-off swap instead.
-3. **How should the Christmas and New Year block be handled?** It is the extreme
-   case on both axes: the duty people most need to know early, *and* the most
-   expensive to get wrong at 13.2 points for a first call. Points can compensate
-   someone for working Christmas; nothing can give them Christmas back. The
-   options are to let the scheduler place it like any other duty, to allocate it
-   as a deliberate draw at the start of the period with the result recorded, or
-   to agree it by hand. A recorded draw is the most defensible socially — nobody
-   can claim the algorithm was biased — but the group has to accept the outcome
-   sight unseen.
-4. **How much churn is tolerable?** If provisional months are regenerated every
-   cycle, dates shuffle and people learn to ignore anything not yet committed.
-   The system can be told to prefer leaving existing assignments alone, at the
-   cost of using less of the late information. That is a dial, and the group
-   should say roughly where it sits.
+1. ~~**How much certainty do people need?**~~ **Decided: three months.** Long
+   enough to plan a life around, and the earlier idea of one committed month plus
+   a provisional tail is dropped with it.
+2. ~~**Does committed mean committed?**~~ **Decided: yes.** A published block is a
+   promise and is not regenerated. Leave that arrives afterwards is settled by
+   trading the duty away (§3.1.1), not by re-planning. This is defensible because
+   the pool is stable within a period — a fixed university commitment, and
+   long absences are rare.
+3. ~~**How should the Christmas and New Year block be handled?**~~ **Decided:
+   like any other duty.** A draw and a hand-agreed block were both considered and
+   rejected — the points compensate whoever draws it and the balance evens out
+   over the remaining nine months, so no special case earns its complexity. See
+   §6.8.
+4. **Fixed quarters, or a rolling three months? Still open**, and now the only
+   part of this question left. Both publish three committed months; they differ
+   in when.
 
-Until this is settled, the operator generates one month at a time and nothing is
-frozen — see [TECHNICAL-README §7.5](TECHNICAL-README.md#75-generating-further-ahead)
-for what implementing an answer would involve, and for two rough edges the
-current behaviour has in the meantime.
+   **Fixed quarters** — Oct–Dec, Jan–Mar, Apr–Jun, Jul–Sep, published four times
+   a year, each aligned to the period (§4). Simple to operate and to explain: one
+   action, four times a year, and nothing is ever regenerated. The cost is that
+   certainty *decays* — the day before a new block publishes, people can see
+   three months ahead; the day before the next one, one month. Whether that
+   sawtooth matters depends on how far ahead people actually book things.
 
+   **Rolling three months** — republished monthly so there are always three
+   months visible. Constant certainty, but it needs the committed subset held
+   fixed while the tail is regenerated, which reintroduces the churn problem the
+   provisional tail had: if uncommitted dates shuffle every month, people learn
+   to ignore them. That is controllable with a stability penalty, at the cost of
+   using less of the late information the rolling window exists to exploit
+   ([TECHNICAL-README §7.5](TECHNICAL-README.md#75-generating-further-ahead)).
+
+   The trade is operational simplicity against constant notice. Worth deciding
+   against one real period rather than in advance.
+
+Until that last part is settled, the operator generates one month at a time and
+nothing is frozen — see
+[TECHNICAL-README §7.5](TECHNICAL-README.md#75-generating-further-ahead) for what
+implementing either answer would involve, and for two rough edges the current
+behaviour has in the meantime.
+
+- **How long is a short absence?** §3.1.1 sets the threshold at **two weeks**,
+  and that number is a placeholder in exactly the way the nine scoring numbers
+  are. The shape of the rule is decided — below the line an absence only keeps
+  you off the roster, above it your expected share drops — but where the line
+  sits is the group's call.
+
+  The trade runs in both directions. **Set it too low** and the operator is
+  entering every long weekend and every exam day for forty people, which is the
+  data-entry burden that makes an annually-rotating operator give up, and the
+  precision bought is smaller than a single first call. **Set it too high** and
+  somebody genuinely away for ten days carries a full share of the period they
+  were not there for, which is the unfairness the whole system exists to remove.
+
+  Two questions worth putting to a real period rather than guessing twice. Is
+  fourteen days the right place? And should the line be a fixed *duration* at
+  all, rather than a share of the window being generated — three weeks bites
+  harder inside a three-month block than the same three weeks would across a
+  full year.
 - **Setting the nine numbers.** Deferred by design — the group fixes the weights
   and multipliers later, and §2 carries placeholders until they do. Two things to
   put in front of them when the time comes. First, whether the day-type
@@ -540,5 +715,14 @@ current behaviour has in the meantime.
 
 ## Status
 
-Design phase. No implementation yet — the model above is the thing to agree on
-first.
+**First implementation, not yet run for real.** The scoring, fairness and
+scheduling logic is written and under test. The Sheet layer, the operator menu
+and the read-only board are written but have only been exercised by deploying
+them, and no period has been run start to finish.
+
+The policy above is agreed except where §9 says otherwise. The two placeholders
+that matter most are the nine scoring numbers (§2) and the publication cadence
+(§9.1); everything else can move without anything being rebuilt.
+
+Build detail and deployment are in
+[TECHNICAL-README](TECHNICAL-README.md) and [SETUP.md](SETUP.md).
