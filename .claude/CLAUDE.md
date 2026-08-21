@@ -68,7 +68,7 @@ document wins. **R** = README.md, **T** = TECHNICAL-README.md.
 | Fairness is points per **available day**, not equal totals                                      | R §3           |
 | Balances are derived, never stored as running totals                                            | T §3.3         |
 | Points and multipliers are integer hundredths — never floating point                            | T §3.4         |
-| Slot dates are civil dates resolved in Europe/Brussels, never timestamps                        | T §1.5         |
+| Slot dates are civil dates resolved in Europe/Brussels, never timestamps                        | T §1.6         |
 | The period runs 1 Oct – 30 Sep; balances reset to zero and never carry over                     | R §4           |
 | Coverage is a hard constraint and must fail loudly, never emit a partial roster                 | R §5.1, T §4.1 |
 | Balance is optimised continuously across the period, not at its end                             | R §4, T §4.2   |
@@ -141,7 +141,7 @@ test/               Node tests for 00-30
   is never persisted.
 - Civil dates only: ISO `YYYY-MM-DD` strings in the pure modules, all arithmetic
   through `Date.UTC`. Conversion to and from Sheet `Date` values happens in
-  `40_sheet.gs` alone, in `Europe/Brussels` (TECHNICAL-README §1.5).
+  `40_sheet.gs` alone, in `Europe/Brussels` (TECHNICAL-README §1.6).
 - Every mutation calls `audit()`. With one editing account, that tab plus Drive
   revision history is the whole record of what happened.
 - Errors the operator will see should say what to do next, not just what broke.

@@ -57,7 +57,69 @@ this separation is the only thing standing between the fairness maths and
 deploy-and-see. Everything from `40_sheet.gs` up is kept thin for the same
 reason.
 
-### 1.3 Why a spreadsheet rather than a hosted application
+### 1.3 Deployment
+
+There is no server, so "deploying" means two separate things: getting the code
+into the Sheet's bound script, and publishing a version of the board. They are
+not the same action and confusing them is the most likely early mistake.
+
+**What gets deployed.** Only `apps-script/` — `clasp` pushes the directory named
+as `rootDir` in `.clasp.json`, so `test/`, `scripts/` and `preview/` never leave
+the machine. `.clasp.json` itself is gitignored: it holds the script id of one
+specific deployment, which is local state rather than shared source.
+
+**`appsscript.json` is the deployment configuration.** Three values in it carry
+weight:
+
+| Field | Value | Why |
+|---|---|---|
+| `timeZone` | `Europe/Brussels` | Every Sheet `Date` is converted through this zone (§1.6) |
+| `webapp.executeAs` | `USER_DEPLOYING` | The board must read a Sheet its readers cannot open |
+| `webapp.access` | `ANYONE` | Readers must be signed in, so the email allowlist has an identity to check (§5) |
+
+Because the manifest declares the `webapp` block, a CLI deployment picks those
+settings up — there is no need to set them by hand in the editor dialog.
+
+**The commands** (clasp 3.x; `create`, `deploy` and friends remain as aliases):
+
+```bash
+npx @google/clasp@3 login                                  # once, in a browser
+npx @google/clasp@3 create-script --type sheets       --title Psychoco --rootDir apps-script                # new Sheet + bound script
+npx @google/clasp@3 push                                   # upload code
+npx @google/clasp@3 create-deployment --description "..."   # publish a board version
+npx @google/clasp@3 open-web-app                            # get the URL
+npx @google/clasp@3 pull                                    # if someone edited in the browser
+```
+
+**Push and deploy are not the same, and this will catch you out.** After a
+`push`:
+
+- the **menu** runs the new code immediately, because a container-bound script
+  executes whatever is currently saved;
+- the **board** keeps serving the last *deployed version*, and does not change
+  until `create-deployment` runs.
+
+So a fix to the scheduler is live for the operator the moment it is pushed, while
+a fix to the board is invisible to the group until it is deployed. Version your
+deployments with a description; `list-versions` and `update-deployment` are the
+rollback path.
+
+**Authorization happens once**, the first time a menu function runs, and Google
+prompts the owning account to grant the script access to its own spreadsheet.
+Viewers are never prompted, because the board runs as the deploying account
+rather than as them — which is worth knowing, since a permissions dialog is
+exactly what stops people using a tool.
+
+**Whichever account runs `login` owns everything.** The Sheet is created in that
+account's Drive and the board runs as it. That makes the choice of account a
+governance decision, not a convenience: a dedicated account handed on with the
+operator role each October keeps forty colleagues' data out of an individual's
+personal Drive and lets the tool outlive its current maintainer (§6).
+
+The click-by-click walkthrough, including what to fill in and in what order,
+is in [SETUP.md](SETUP.md). This section covers the model; that covers the steps.
+
+### 1.4 Why a spreadsheet rather than a hosted application
 
 A Go application with Postgres was designed and then rejected. The reasoning is
 worth keeping, because it will be re-litigated:
@@ -81,9 +143,9 @@ worth keeping, because it will be re-litigated:
 
 The hosted application becomes the right answer if per-person logins are needed
 (self-service absences), if the pool grows well past forty, or if the integrity
-problem below turns out to bite in practice rather than in theory.
+problem in §1.5 turns out to bite in practice rather than in theory.
 
-### 1.4 What a spreadsheet costs us
+### 1.5 What a spreadsheet costs us
 
 **Storage enforces nothing.** Every invariant that a database would guarantee
 with a constraint is, here, a convention. Sorting one column without the others
@@ -113,7 +175,7 @@ forbids. The board (§5) exists precisely so nobody needs view access.
 the I/O, setup, menu and board layers are verified by use. Hence keeping them
 thin.
 
-### 1.5 Civil dates, not timestamps
+### 1.6 Civil dates, not timestamps
 
 A slot belongs to a calendar day, and "Saturday" or "Christmas Day" is a
 Europe/Brussels calendar fact. The pure modules work exclusively in ISO
@@ -268,7 +330,7 @@ optima. Two reasons not to. The first is explainability: a solver's answer is
 "the model says so", which is exactly the wrong thing to tell someone who thinks
 they got a raw deal. The second is that no solver of that kind runs inside Apps
 Script, so it would mean a service elsewhere and the end of the zero-hosting
-property (§1.3).
+property (§1.4).
 
 Neither is likely to bite. Generation is **monthly, not annual** — around 90
 slots against 40 people, which local search settles in well under a second, far
@@ -390,7 +452,7 @@ Technical questions. The ones for the group are in README §9.
   technical ones. Not yet implemented — today a config change leaves already
   published duties priced under the old version, which `60_validate.gs` reports
   as a mismatch only if the version numbers disagree.
-- **No test coverage above the pure modules.** §1.4. Accepted, mitigated by
+- **No test coverage above the pure modules.** §1.5. Accepted, mitigated by
   keeping those layers thin.
 
 ---
@@ -444,7 +506,7 @@ which are the obvious follow-ons.
 
 `60_validate.gs` only runs when the operator chooses to run it. An `onEdit`
 trigger would turn "silently wrong until September" into "flagged in seconds",
-which is the whole mitigation §1.4 relies on. Cheap to add, and the reason the
+which is the whole mitigation §1.5 relies on. Cheap to add, and the reason the
 checks were written as a pure function over the model rather than as a menu
 action.
 
