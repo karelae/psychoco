@@ -84,7 +84,7 @@ settings up — there is no need to set them by hand in the editor dialog.
 
 ```bash
 npx @google/clasp@3 login                                  # once, in a browser
-npx @google/clasp@3 create-script --type sheets       --title Psychoco --rootDir apps-script                # new Sheet + bound script
+npx @google/clasp@3 create-script --type sheets --title Psychoco --rootDir apps-script
 npx @google/clasp@3 push                                   # upload code
 npx @google/clasp@3 create-deployment --description "..."   # publish a board version
 npx @google/clasp@3 open-web-app                            # get the URL
@@ -430,16 +430,14 @@ gives us that, and better than shared passwords would have:
 
 ## 6. Open questions
 
-Technical questions. The ones for the group are in README §9.
+Technical questions. The ones for the group are in README §9, which is where
+the generation horizon now lives (§7.5).
 
 - **Who owns the Google account in year three.** The tool lives in one Drive.
   The operator rotates annually and the maintainer may drift away; if the account
   is personal and lapses, the ledger goes with it. A dedicated account handed
   over each October is the current plan, and a department Workspace account is
   the better long-term answer. Unsolved, and not a technical problem.
-- **Generation window.** §4.3 assumes monthly. Whether the operator wants a
-  month, a quarter, or "the rest of the period" is a product question with a
-  direct effect on how much freedom the optimiser has.
 - **How the swap record works.** README §9 wants swaps recorded rather than
   forbidden. Whether that is a ledger correction, a `Swap` tab, or an
   `Escalation` variant is undecided.
@@ -517,4 +515,45 @@ Not implemented: today a config change simply leaves already-published duties
 priced under the old version. Whether a recalculation should reprice the whole
 period or only duties after the effective-from date is a fairness decision, not
 a technical one — see §6.
+
+### 7.5 Generating further ahead
+
+The policy question — how much notice people need — is README §9.1 and belongs to
+the group. This is what implementing any answer would take, plus two rough edges
+the present behaviour has until then.
+
+**Today:** `generateMonth` produces one month, for any month the operator types,
+and nothing is frozen. Two consequences worth knowing:
+
+- **Regenerating replaces.** A month can be regenerated at will, destroying
+  manual overrides and changing dates people may already have planned around. It
+  warns; nothing prevents it.
+- **Months must be generated in order.** A month's balance is derived from the
+  ledger plus whatever roster already exists, so generating March before January
+  and February exist balances March as though those months never happened. Not
+  enforced anywhere.
+
+**What a rolling horizon needs.** Three mechanisms, and the first is nearly free:
+
+1. **Commitment as a hard constraint, not an obstacle.** `Roster` gains a
+   `Status` column (`provisional` / `committed`). Committed rows move from
+   *to-be-generated* into `priorAssignments`, which the scheduler already treats
+   as fixed. Generation then balances around them rather than refusing to run,
+   so a window can be regenerated while keeping its committed subset intact.
+2. **A stability term in the objective.** Without it a rolling horizon is worse
+   than useless: regenerate provisional months each cycle and everyone's dates
+   shuffle, so people stop trusting anything uncommitted. A `weight.stability`
+   penalty on moving an existing assignment makes regeneration change only what
+   a new constraint forces or what buys a real fairness gain. It is a dial, and
+   it trades away some of the late information it exists to exploit.
+3. **"Roll the roster forward" instead of "generate month YYYY-MM".** One menu
+   action that commits the nearest provisional month and regenerates the rest of
+   the window. This removes the date prompt, and with it both rough edges above:
+   no mistyped months and no out-of-order generation.
+
+**Configuration, not constants** (§3.1): `horizon.committedMonths`,
+`horizon.provisionalMonths`, `weight.stability`.
+
+Committing a month should write an audit entry — it is the moment the group can
+be told, and the only record that a date became a promise.
 
