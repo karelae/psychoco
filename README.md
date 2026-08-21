@@ -23,11 +23,11 @@ through the year and the people who leave before it ends.
 Every single day of the year carries three simultaneous on-call posts, and all
 three must be filled:
 
-| Post | Weekday | Weekend and public holiday |
-|---|---|---|
-| **1st** | In the hospital and working, all night | In the hospital and working, a full 24 hours |
-| **2nd** | On call — reachable, backs up the 1st when the workload spills over | Comes in to the hospital for check-ups, backs up the 1st |
-| **3rd** | On call — reachable | On call — reachable |
+| Post    | Weekday                                                                                                              | Weekend and public holiday                               | Consequences next day                                   |
+|---------|----------------------------------------------------------------------------------------------------------------------|----------------------------------------------------------|---------------------------------------------------------|
+| **1st** | In the hospital and working during the day, and working all night                                                    | In the hospital and working, a full 24 hours             | next day is a rest day — no post at all                 |
+| **2nd** | In the hospital and working during the day, also on call — reachable, backs up the 1st when the workload spills over | Comes in to the hospital for check-ups, backs up the 1st | next day is a normal post day — no rest day entitlement |
+| **3rd** | In the hospital and working during the day, also on call in case of escalation — reachable                           | On call — reachable                                      | next day is a normal post day — no rest day entitlement |
 
 Demand is therefore fixed and fully known in advance: **three posts per calendar
 day, every day — 1,095 slots per period.** There is no flexing the number of
@@ -35,14 +35,14 @@ shifts. The only question is who fills them.
 
 Note that for this amount of shifts the more people you have the less this will dominate your life. The table below illustrates this:
 
-| Pool | Utilisation | Shifts/yr | 1st calls/yr |
-|---|---|---|---|
-| 4 | 100% | 274 | 91 |
-| 6 | 67% | 183 | 61 |
-| 8 | 50% | 137 | 46 |
-| 12 | 33% | 91 | 30 |
-| 20 | 20% | 55 | 18 |
-| **40** | **10%** | **27** | **9** |
+| Pool   | Utilisation | Shifts/yr | 1st calls/yr |
+|--------|-------------|-----------|--------------|
+| 4      | 100%        | 274       | 91           |
+| 6      | 67%         | 183       | 61           |
+| 8      | 50%         | 137       | 46           |
+| 12     | 33%         | 91        | 30           |
+| 20     | 20%         | 55        | 18           |
+| **40** | **10%**     | **27**    | **9**        |
 
 *Shifts/yr* counts all three posts together, not just first calls, and
 *utilisation* is the share of the year a person spends either on duty or on a
@@ -107,11 +107,11 @@ shift; day type captures what it costs you socially to be on it.
 
 ### 2.1 Base weight by level
 
-| Level | Role | Base  |
-|---|---|-------|
-| 1st | First call — primary responsibility, highest volume and acuity | **6** |
-| 2nd | Second call — backup and escalation | **3** |
-| 3rd | Third call — lightest duty, rarely disturbed | **1** |
+| Level | Role                                                           | Base  |
+|-------|----------------------------------------------------------------|-------|
+| 1st   | First call — primary responsibility, highest volume and acuity | **6** |
+| 2nd   | Second call — backup and escalation                            | **3** |
+| 3rd   | Third call — lightest duty, rarely disturbed                   | **1** |
 
 The gaps are deliberately wide and non-linear. A first-level shift is not
 "somewhat harder" than a third — it is a different job, and the weights say so.
@@ -119,13 +119,13 @@ One first-level shift is worth six third-level shifts.
 
 ### 2.2 Day-type multiplier
 
-| Day type | Multiplier |
-|---|------------|
-| Monday – Thursday | **1.0**    |
-| Friday | **1.2**    |
-| Saturday | **1.5**    |
-| Sunday | **1.5**    |
-| Public holiday | **1.8**    |
+| Day type                                     | Multiplier |
+|----------------------------------------------|------------|
+| Monday – Thursday                            | **1.0**    |
+| Friday                                       | **1.2**    |
+| Saturday                                     | **1.5**    |
+| Sunday                                       | **1.5**    |
+| Public holiday                               | **1.8**    |
 | Protected holiday (24/25 Dec, 31 Dec, 1 Jan) | **2.2**    |
 
 **Stacking rule: multipliers do not compound. The highest applicable multiplier
@@ -135,19 +135,19 @@ makes the ledger impossible to reason about.
 
 ### 2.3 What that yields
 
-| Shift | Calculation | Points |
-|---|---|---|
-| 3rd, Tuesday | 1 × 1.0 | 1.0 |
-| 3rd, Saturday | 1 × 1.5 | 1.5 |
-| 3rd, Christmas Day | 1 × 2.2 | 2.2 |
-| 2nd, Tuesday | 3 × 1.0 | 3.0 |
-| 2nd, Saturday | 3 × 1.5 | 4.5 |
-| 2nd, Christmas Day | 3 × 2.2 | 6.6 |
-| 1st, Tuesday | 6 × 1.0 | 6.0 |
-| 1st, Friday | 6 × 1.2 | 7.2 |
-| 1st, Saturday or Sunday | 6 × 1.5 | 9.0 |
-| 1st, public holiday | 6 × 1.8 | 10.8 |
-| 1st, Christmas Day | 6 × 2.2 | 13.2 |
+| Shift                   | Calculation | Points |
+|-------------------------|-------------|--------|
+| 3rd, Tuesday            | 1 × 1.0     | 1.0    |
+| 3rd, Saturday           | 1 × 1.5     | 1.5    |
+| 3rd, Christmas Day      | 1 × 2.2     | 2.2    |
+| 2nd, Tuesday            | 3 × 1.0     | 3.0    |
+| 2nd, Saturday           | 3 × 1.5     | 4.5    |
+| 2nd, Christmas Day      | 3 × 2.2     | 6.6    |
+| 1st, Tuesday            | 6 × 1.0     | 6.0    |
+| 1st, Friday             | 6 × 1.2     | 7.2    |
+| 1st, Saturday or Sunday | 6 × 1.5     | 9.0    |
+| 1st, public holiday     | 6 × 1.8     | 10.8   |
+| 1st, Christmas Day      | 6 × 2.2     | 13.2   |
 
 On these placeholder values the spread between the lightest and heaviest shift
 comes out at **13.2×**. Whatever the group finally sets, a spread of roughly that
@@ -239,20 +239,20 @@ first-level Sunday.
 
 A 92-day stretch, three people:
 
-| Person | In pool | Absence | Available days |
-|---|---|---|---|
-| A | all 92 days | — | 92 |
-| B | joins on day 32 | — | 61 |
-| C | all 92 days | 14 days leave | 78 |
+| Person | In pool         | Absence       | Available days |
+|--------|-----------------|---------------|----------------|
+| A      | all 92 days     | —             | 92             |
+| B      | joins on day 32 | —             | 61             |
+| C      | all 92 days     | 14 days leave | 78             |
 
 Total available days = 231. Total points distributed = 462.
 So `targetRate` = 462 / 231 = **2.0 points per available day**.
 
-| Person | Expected | Actual | Balance |
-|---|---|---|---|
-| A | 184.0 | 200.0 | **+16.0** |
-| B | 122.0 | 100.0 | **−22.0** |
-| C | 156.0 | 162.0 | **+6.0** |
+| Person | Expected | Actual | Balance   |
+|--------|----------|--------|-----------|
+| A      | 184.0    | 200.0  | **+16.0** |
+| B      | 122.0    | 100.0  | **−22.0** |
+| C      | 156.0    | 162.0  | **+6.0**  |
 
 B is owed the most and takes the next heavy shift — despite having the *lowest*
 raw total, and despite having done fewer shifts than everyone else. That is the

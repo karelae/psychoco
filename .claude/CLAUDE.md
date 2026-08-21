@@ -41,26 +41,26 @@ Rules any implementation has to respect. Each is argued in the referenced
 section, and that section is the authority — if this table disagrees with it, the
 document wins. **R** = README.md, **T** = TECHNICAL-README.md.
 
-| Invariant | Where |
-|---|---|
-| Three posts (1st / 2nd / 3rd) are staffed every single day — 1,095 slots per period | R §1.1 |
-| On a drop-out the chain shifts up: 2nd → 1st, 3rd → 2nd, backfill at 3rd | R §1.2 |
-| `points = base(level) × multiplier(day type)` | R §2 |
-| Day-type multipliers never compound — the highest applicable one wins outright | R §2.2 |
-| Weights and multipliers are placeholders until the group fixes them; never hard-code them | R §2.2, T §3.1 |
-| Points are credited for the post actually **worked**, never the post rostered | R §2.4 |
-| A rest day follows a 1st only — 2nd and 3rd carry none, and it follows worked duty | R §2.4, R §5.1 |
-| Fairness is points per **available day**, not equal totals | R §3 |
-| Balances are derived, never stored as running totals | T §3.3 |
-| The period runs 1 Oct – 30 Sep; balances reset to zero and never carry over | R §4 |
-| Coverage is a hard constraint and must fail loudly, never emit a partial roster | R §5.1, T §4.1 |
-| Balance is optimised continuously across the period, not at its end | R §4, T §4.2 |
-| Every assignment must be explainable, and every one overridable by hand | R §5.2, T §4.3 |
-| `Assignment` (planned) and `WorkedDuty` (actual) stay separate records | T §2.1 |
-| Every priced duty references the scoring-config version it was priced under | T §3.2 |
-| Two shared logins (viewer, admin); every mutation writes an audit entry with an actor | R §7.1, T §5 |
-| The viewer must never read individual absence records — only a derived day count | R §7.1, T §5 |
-| Operable by an untrained person who changes annually — no config files or CLI for routine tasks | R §7 |
+| Invariant                                                                                       | Where          |
+|-------------------------------------------------------------------------------------------------|----------------|
+| Three posts (1st / 2nd / 3rd) are staffed every single day — 1,095 slots per period             | R §1.1         |
+| On a drop-out the chain shifts up: 2nd → 1st, 3rd → 2nd, backfill at 3rd                        | R §1.2         |
+| `points = base(level) × multiplier(day type)`                                                   | R §2           |
+| Day-type multipliers never compound — the highest applicable one wins outright                  | R §2.2         |
+| Weights and multipliers are placeholders until the group fixes them; never hard-code them       | R §2.2, T §3.1 |
+| Points are credited for the post actually **worked**, never the post rostered                   | R §2.4         |
+| A rest day follows a 1st only — 2nd and 3rd carry none, and it follows worked duty              | R §2.4, R §5.1 |
+| Fairness is points per **available day**, not equal totals                                      | R §3           |
+| Balances are derived, never stored as running totals                                            | T §3.3         |
+| The period runs 1 Oct – 30 Sep; balances reset to zero and never carry over                     | R §4           |
+| Coverage is a hard constraint and must fail loudly, never emit a partial roster                 | R §5.1, T §4.1 |
+| Balance is optimised continuously across the period, not at its end                             | R §4, T §4.2   |
+| Every assignment must be explainable, and every one overridable by hand                         | R §5.2, T §4.3 |
+| `Assignment` (planned) and `WorkedDuty` (actual) stay separate records                          | T §2.1         |
+| Every priced duty references the scoring-config version it was priced under                     | T §3.2         |
+| Two shared logins (viewer, admin); every mutation writes an audit entry with an actor           | R §7.1, T §5   |
+| The viewer must never read individual absence records — only a derived day count                | R §7.1, T §5   |
+| Operable by an untrained person who changes annually — no config files or CLI for routine tasks | R §7           |
 
 ## Build & test
 

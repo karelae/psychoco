@@ -29,18 +29,18 @@ a local or single-user tool, but the decision has not been made.
 
 ## 2. Domain model
 
-| Entity | Holds |
-|---|---|
-| **Person** | Name, arrival date, departure date, working fraction, any post restrictions (normally none — see README §5.1) |
-| **Absence** | Person, date range, type, whether it reduces availability |
-| **DayType** | Per-date classification (weekday / Friday / Saturday / Sunday / public holiday / protected holiday), from a configurable national holiday calendar |
-| **Slot** | The demand side: a date + a post (1st / 2nd / 3rd). Three per day, every day of the period |
-| **Assignment** | Slot + person + origin (auto / manual) + reason. What was **planned** |
-| **WorkedDuty** | The post a person **actually held** on a date + points + scoring-config version. What the ledger reads |
-| **Escalation** | Date, who dropped out, the resulting shift-up chain, who backfilled the vacant post, reason |
-| **ScoringConfig** | Versioned base weights, multipliers, and constraint parameters, with an effective-from date |
-| **Period** | 1 Oct – 30 Sep window; the scope of every balance calculation, plus the name of the operator running it (§5) |
-| **AuditEntry** | What changed, when, under which role, under which period's operator. With shared logins, the only record of who did what |
+| Entity            | Holds                                                                                                                                              |
+|-------------------|----------------------------------------------------------------------------------------------------------------------------------------------------|
+| **Person**        | Name, arrival date, departure date, working fraction, any post restrictions (normally none — see README §5.1)                                      |
+| **Absence**       | Person, date range, type, whether it reduces availability                                                                                          |
+| **DayType**       | Per-date classification (weekday / Friday / Saturday / Sunday / public holiday / protected holiday), from a configurable national holiday calendar |
+| **Slot**          | The demand side: a date + a post (1st / 2nd / 3rd). Three per day, every day of the period                                                         |
+| **Assignment**    | Slot + person + origin (auto / manual) + reason. What was **planned**                                                                              |
+| **WorkedDuty**    | The post a person **actually held** on a date + points + scoring-config version. What the ledger reads                                             |
+| **Escalation**    | Date, who dropped out, the resulting shift-up chain, who backfilled the vacant post, reason                                                        |
+| **ScoringConfig** | Versioned base weights, multipliers, and constraint parameters, with an effective-from date                                                        |
+| **Period**        | 1 Oct – 30 Sep window; the scope of every balance calculation, plus the name of the operator running it (§5)                                       |
+| **AuditEntry**    | What changed, when, under which role, under which period's operator. With shared logins, the only record of who did what                           |
 
 ### 2.1 Assignment versus WorkedDuty
 
