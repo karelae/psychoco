@@ -296,7 +296,10 @@ function recordDropout() {
     backfill: backfill || '(uncovered)',
     reason: 'drop-out recorded by the operator'
   });
-  appendAbsence({ name: dropper, from: date, to: date, type: 'drop-out', reduces: true });
+  // The absence keeps the dropper off the roster for the day, but a single day is
+  // far under the recalibration threshold, so it does not lower what they are
+  // expected to carry (README §3.1.1). The zero points are the whole correction.
+  appendAbsence({ name: dropper, from: date, to: date, type: 'drop-out', reduces: false });
   audit('recordDropout', date + ': ' + dropper + ' dropped out; ' + chainText +
     '; ' + vacantPost + ' → ' + (backfill || 'uncovered'));
 

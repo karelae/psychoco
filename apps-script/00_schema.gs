@@ -69,6 +69,7 @@ var DEFAULT_CONFIG = [
   ['mult.sun', 1.5, 'Sunday'],
   ['mult.public', 1.8, 'Public holiday'],
   ['mult.protected', 2.2, 'Protected holiday (24/25 Dec, 31 Dec, 1 Jan)'],
+  ['absence.minRecalibratingDays', 14, 'Shortest absence that lowers a person’s expected share (README §3.1.1)'],
   ['cap.shiftsPerWeek', 3, 'Hard constraint: most posts one person may hold in any 7 days'],
   ['cap.shiftsPerMonth', 8, 'Hard constraint: most posts one person may hold in a calendar month'],
   ['cap.minWeekendGapDays', 14, 'Hard constraint: minimum days between two weekend posts'],

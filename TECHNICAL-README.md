@@ -155,7 +155,7 @@ typed where `1.2` belongs are all accepted without complaint.
 Four mitigations, in descending order of usefulness:
 
 1. **`60_validate.gs` checks the invariants directly** — coverage, one post per
-   person per day, the rest day after a 1st, names that exist, nobody rostered
+   person per day, nobody on guard two days running, names that exist, nobody rostered
    during an absence, escalation readiness, and every ledger price re-derived
    from the config version it claims. Run from the menu. This does not *prevent*
    a bad edit; it turns "silently wrong until September" into "flagged in
@@ -234,7 +234,7 @@ The split matters enough to state on its own. `Assignment` is the plan;
 On an undisturbed day the two mirror each other exactly and nobody ever looks at
 the distinction. On a disturbed day it is the only thing keeping the ledger
 honest: when the escalation chain shifts up (README §1.2), points and the
-post-1st rest entitlement both follow the worked post, not the rostered one
+guard-free day after it both follow the worked post, not the rostered one
 (README §2.4).
 
 Collapsing them into one mutable row would make the roster unauditable the first
@@ -246,8 +246,9 @@ time somebody called in sick — and drop-outs are routine, not exceptional.
 
 ### 3.1 Configuration is data, not code
 
-Weights, multipliers, constraint parameters, and the holiday calendar are all
-runtime data with an effective-from date. **Never constants in source.** Two
+Weights, multipliers, constraint parameters, the recalibration threshold
+(`absence.minRecalibratingDays`) and the holiday calendar are all runtime data
+with an effective-from date. **Never constants in source.** Two
 independent reasons:
 
 - The values are the group's decision and are not yet set (README §2). They will
@@ -299,7 +300,7 @@ every slot.
 ### 4.1 Constraint model
 
 The six rules in README §5.1 are the **hard constraints** — coverage, escalation
-readiness, one post per person per day, availability, post-1st rest, volume caps.
+readiness, one post per person per day, availability, no two days running, volume caps.
 None may be violated. Coverage is the one that cannot even be traded against the
 others: when the constraint set makes a day unfillable, the scheduler must fail
 loudly and name the blocking constraint rather than emit an incomplete roster.
@@ -355,21 +356,35 @@ constraints that eliminated the rest.
 
 ### 4.4 The capacity floor
 
-Worth writing down, because it bounds everything else. Over any *D* days the
-posts consume person-days as follows: 1st costs two days per duty (the shift plus
-its rest day), 2nd and 3rd cost one each. That is `2D + D + D = 4D` person-days
-against a supply of `N × D`, so:
+Worth writing down, because it bounds everything else. Nobody is on guard two
+days running (README §5.1.5), so **every** post costs two person-days — the duty
+itself plus the guard-free day after it, whichever post it was. Over any *D* days
+that is `2D + 2D + 2D = 6D` person-days against a supply of `N × D`, so:
 
-> **N ≥ 4.** Four people is the absolute floor, and it is exactly saturated — a
-> 4-day cycle in which everyone works every day and rests every fourth. Three is
-> impossible under any arrangement: whoever holds 1st today is out tomorrow,
-> leaving two people for three posts.
+> **N ≥ 6.** Six is the absolute floor, and it is exactly saturated: two fixed
+> sets of three, one on guard while the other recovers, alternating forever. Five
+> is impossible under any arrangement — each person can cover at most every other
+> day, giving `5 × D/2 = 2.5D` against a demand of `3D`.
 
-Utilisation is therefore `4 / N`, tabulated in README §1.1. Allowing for leave
-and illness, the real survival floor is five or six; below about ten the rota
+Utilisation is therefore `6 / N`, tabulated in README §1.1. Allowing for leave and
+illness the real survival floor is eight or nine; below about fifteen the rota
 dominates everyone's life. **At the actual pool of roughly forty, utilisation is
-about 10%** — each person holding around 27 posts a year, of which some 9 are
+about 15%** — each person holding around 27 posts a year, of which some 9 are
 first calls.
+
+**The arithmetic floor is not the algorithmic one.** Six is what the arithmetic
+allows; greedy seeding needs nine to fill a month reliably. At saturation the only
+valid roster is the exact alternating pattern, and seeding by largest deficit does
+not reserve it — it fills the 1st and 2nd of a day and then finds nobody left for
+the 3rd who is not already committed either side. Measured on a one-month window
+with the volume caps off: 6, 7 and 8 fail, 9 and up succeed.
+
+This is left as it is rather than fixed, deliberately. The failure is loud — a
+`SchedulingError` naming the blocked slot (§4.1), never a partial roster — and it
+sits at a pool size a quarter of the real one. Making the seed backtrack to reach
+the true floor would add the one thing §4.3 trades everything else away to avoid:
+a search whose answer cannot be explained as a sequence of moves. If the pool ever
+approached nine the honest fix is more people, not a cleverer seed.
 
 The consequence is worth being explicit about: **coverage is never the binding
 constraint here, fairness is.** With that much slack the scheduler has near-total
@@ -384,9 +399,27 @@ Recording a drop-out (README §5.3) is three things in one transaction: an
 `Absence` row for the person who dropped out. The original `Assignment` rows are
 left untouched — the plan stays visible as what was planned.
 
+The `Absence` row is written with `Reduces availability` **unticked**. One day is
+far under `absence.minRecalibratingDays`, so it keeps the dropper off that day's
+roster without moving what they are expected to carry (README §3.1.1). Their
+balance therefore falls against an unchanged target, which is the whole
+correction; nothing else has to police it.
+
 Ranking the shortlist for the vacated post uses the same deficit ordering as the
 scheduler, filtered to available and escalation-ready people. It is a suggestion:
 the operator records who actually took it.
+
+**The shortlist excludes anyone on guard the day before or after, and gets that
+for free.** `recordDropout` generates a one-day window and hands the rest of the
+roster in as `priorAssignments`; `buildState` commits every out-of-window row into
+`heldBy`, so `placementBlocker` rejects a candidate who holds a post either side.
+No special case in the drop-out flow, and the reason a candidate is missing from
+the shortlist is reported like any other blocker.
+
+Nobody already in the chain can clash, because they were all rostered today and
+the consecutive-day rule had already cleared their tomorrow (README §2.4). So an
+escalation touches exactly one day of the roster — the vacant post — and never
+cascades into the next.
 
 ---
 
@@ -518,9 +551,17 @@ a technical one — see §6.
 
 ### 7.5 Generating further ahead
 
-The policy question — how much notice people need — is README §9.1 and belongs to
-the group. This is what implementing any answer would take, plus two rough edges
-the present behaviour has until then.
+The policy question is README §9.1 and belongs to the group. **Three months, and
+committed means committed, are now decided; whether that is a fixed quarter or a
+rolling window is not.** This is what implementing either answer would take, plus
+two rough edges the present behaviour has until then.
+
+The two options need different amounts of the work below. **Fixed quarters need
+only mechanism 1 and a quarter-sized generate action** — nothing is ever
+regenerated, so there is no churn to control and no stability dial to tune. **A
+rolling window needs all three.** That asymmetry is most of the argument for
+fixed quarters, and worth weighing before the cadence is chosen rather than
+after.
 
 **Today:** `generateMonth` produces one month, for any month the operator types,
 and nothing is frozen. Two consequences worth knowing:
@@ -533,27 +574,78 @@ and nothing is frozen. Two consequences worth knowing:
   and February exist balances March as though those months never happened. Not
   enforced anywhere.
 
-**What a rolling horizon needs.** Three mechanisms, and the first is nearly free:
+**What a longer horizon needs.** Three mechanisms, and the first is nearly free
+and wanted either way:
 
 1. **Commitment as a hard constraint, not an obstacle.** `Roster` gains a
    `Status` column (`provisional` / `committed`). Committed rows move from
    *to-be-generated* into `priorAssignments`, which the scheduler already treats
    as fixed. Generation then balances around them rather than refusing to run,
    so a window can be regenerated while keeping its committed subset intact.
-2. **A stability term in the objective.** Without it a rolling horizon is worse
+2. **A stability term in the objective — rolling only.** Without it a rolling horizon is worse
    than useless: regenerate provisional months each cycle and everyone's dates
    shuffle, so people stop trusting anything uncommitted. A `weight.stability`
    penalty on moving an existing assignment makes regeneration change only what
    a new constraint forces or what buys a real fairness gain. It is a dial, and
    it trades away some of the late information it exists to exploit.
-3. **"Roll the roster forward" instead of "generate month YYYY-MM".** One menu
-   action that commits the nearest provisional month and regenerates the rest of
-   the window. This removes the date prompt, and with it both rough edges above:
-   no mistyped months and no out-of-order generation.
+3. **One "generate the next block" action, not "generate month YYYY-MM".** Under
+   either cadence this replaces the typed month: fixed quarters generate and
+   commit the next quarter, a rolling window commits the nearest month and
+   regenerates the tail. Either way it removes the date prompt and with it both
+   rough edges above — no mistyped months and no out-of-order generation.
 
 **Configuration, not constants** (§3.1): `horizon.committedMonths`,
-`horizon.provisionalMonths`, `weight.stability`.
+`horizon.provisionalMonths`, `weight.stability`. A fixed quarter is
+`committedMonths: 3, provisionalMonths: 0`, which is worth noting because it
+means the cadence decision does not need a schema of its own — it is two numbers
+on the Config tab.
+
+**Generating three months at once is roughly 276 slots against the ~90 the search
+was sized for** (§4.3). Expected to be fine and not yet measured; the parameter
+to reach for if it is not is `search.iterations`, which is a config row.
 
 Committing a month should write an audit entry — it is the moment the group can
 be told, and the only record that a date became a promise.
 
+### 7.6 Recording a swap
+
+**Decided in principle, not designed.** Two people trading duties needs no
+approval and no fairness guardrail — the group is content with an honour system
+(README §9). But the *ledger* still has to see it, or points sit against whoever
+was rostered rather than whoever turned up, and no later correction can find it.
+
+So: no workflow, one obligation — tell the operator. The likely shape is a
+`Record a swap…` menu action taking two names and a date, moving the
+`WorkedDuty` rows and writing an audit entry, with the `Assignment` rows left
+alone exactly as a drop-out leaves them (§4.5).
+
+Two things to settle when it is picked up. Whether a swap is its own tab or just
+a ledger correction with a reason (§6). And that swap volume is a function of the
+horizon: the longer a published block is held committed, the more late-breaking
+leave has nowhere to go but a swap — so this gets more load-bearing, not less,
+once README §9.1 is answered.
+
+### 7.7 The drop-out pattern review
+
+**Wanted, not built. Operator-only, and that constraint is not negotiable.**
+
+`Escalations` already stores every drop-out with its date and who dropped, so the
+data is there; nothing reads it back. What is wanted is a per-person view — how
+many drop-outs, on which day types, at which posts — so an operator can notice
+that the same person has gone sick before four weekend firsts running.
+
+The post and day type are not on the `Escalations` row and do not need to be:
+both are derivable by joining `Date` back to `Roster`. So this is a read, not a
+schema change.
+
+Three rules it has to respect:
+
+- **It never reaches the board.** README §7.1 keeps individual absence records
+  away from the group, and this is the sharpest example of one — it names people
+  and implies motive. It belongs in a Sheet tab or a menu dialog, and
+  `buildBoardData` must never learn how to compute it (§5).
+- **It is a report, not an enforcement.** The fairness consequence is already
+  handled by the drop-out scoring nothing (README §2.4). This exists so a human
+  can have a conversation, and it should carry no automatic effect.
+- **No reasons, ever.** Counts, dates, posts and day types only. An absence
+  reason does not go in the audit trail and does not go here either.

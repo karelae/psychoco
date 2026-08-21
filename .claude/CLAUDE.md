@@ -64,8 +64,9 @@ document wins. **R** = README.md, **T** = TECHNICAL-README.md.
 | Day-type multipliers never compound — the highest applicable one wins outright                  | R §2.2         |
 | Weights and multipliers are placeholders until the group fixes them; never hard-code them       | R §2.2, T §3.1 |
 | Points are credited for the post actually **worked**, never the post rostered                   | R §2.4         |
-| A rest day follows a 1st only — 2nd and 3rd carry none, and it follows worked duty              | R §2.4, R §5.1 |
+| Nobody is on guard two days running, whichever post — and it follows worked duty                 | R §2.4, R §5.1 |
 | Fairness is points per **available day**, not equal totals                                      | R §3           |
+| Only an absence of two weeks or more recalibrates a baseline; shorter ones just block rostering  | R §3.1.1       |
 | Balances are derived, never stored as running totals                                            | T §3.3         |
 | Points and multipliers are integer hundredths — never floating point                            | T §3.4         |
 | Slot dates are civil dates resolved in Europe/Brussels, never timestamps                        | T §1.6         |
@@ -159,9 +160,11 @@ test/               Node tests for 00-30
 - The scheduler is deterministic under a fixed seed. Assert on constraints and
   invariants rather than on specific names wherever possible — a golden roster
   is brittle, "nobody works the day after a 1st" is not.
-- Prove a constraint, not the heuristic that usually hides it. Testing that 2nd
-  and 3rd may fall on consecutive days needs a saturated four-person pool,
-  because a large pool spreads them apart for unrelated reasons.
+- Prove a constraint, not the heuristic that usually hides it. A 20-person pool
+  never has two posts on consecutive days anyway, because the spacing objective
+  spreads them out — so proving the no-consecutive-days rule needs a near-
+  saturated pool with the soft objectives and volume caps switched off, and an
+  assertion that somebody actually worked enough to have been tested.
 
 ## Logging
 

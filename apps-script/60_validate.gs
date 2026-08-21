@@ -97,6 +97,35 @@ function runValidation() {
     });
   });
 
+  // --- Absences ----------------------------------------------------------
+  // Every absence keeps somebody off the roster, but only one of at least
+  // absence.minRecalibratingDays lowers what they are expected to carry
+  // (README §3.1.1). A ticked box on a short absence is either a slip or a
+  // policy change nobody agreed to, and it quietly shifts everyone else's
+  // fair share, so it is worth naming.
+  var currentConfig = null;
+  Object.keys(configs).forEach(function (v) {
+    if (configs[v] && (!currentConfig || Number(v) > currentConfig.version)) currentConfig = configs[v];
+  });
+  var minRecalDays = currentConfig ? currentConfig.absence.minRecalibratingDays : 14;
+
+  Object.keys(absencesByName).forEach(function (name) {
+    absencesByName[name].forEach(function (a) {
+      if (isoToDayNumber(a.to) < isoToDayNumber(a.from)) {
+        report(TABS.ABSENCES + ' row ' + a._row, 'To (' + a.to + ') is before From (' + a.from + ').');
+        return;
+      }
+      var days = isoDaysBetween(a.from, a.to);
+      if (a.reduces && days < minRecalDays) {
+        report(TABS.ABSENCES + ' row ' + a._row,
+          name + ' is absent ' + days + (days === 1 ? ' day' : ' days') + ' from ' + a.from +
+          ', which is under the ' + minRecalDays + '-day threshold, but "Reduces availability" is ticked. ' +
+          'Untick it: they still will not be rostered, and their expected share stays where it is. ' +
+          'If the absence really does run longer, correct the To date.');
+      }
+    });
+  });
+
   // --- Roster ------------------------------------------------------------
   var rosterByDate = {};
   roster.forEach(function (r) {
@@ -145,8 +174,6 @@ function runValidation() {
     }
   });
 
-  checkRestDays(roster, TABS.ROSTER, report);
-
   // --- Ledger ------------------------------------------------------------
   var ledgerByDate = {};
   ledger.forEach(function (r) {
@@ -168,7 +195,7 @@ function runValidation() {
     });
   });
 
-  checkRestDays(ledger, TABS.LEDGER, report);
+  checkConsecutiveDays(roster, ledger, report);
 
   // Points must match the config version they were priced under
   // (TECHNICAL-README §3.2).
@@ -204,23 +231,40 @@ function runValidation() {
   return problems;
 }
 
-/** Nobody works the day after a 1st, and only a 1st earns that (README §5.1). */
-function checkRestDays(rows, where, report) {
+/**
+ * Nobody is on guard two days running, whichever posts they are (README §5.1.5).
+ *
+ * Checked over the roster and the ledger *together* rather than each on its own,
+ * because the pair that matters is usually one row from each. An escalation
+ * settles a day in the ledger — pulling somebody in who was not rostered — while
+ * the roster still says what was planned for the day after. Checking the two
+ * tables separately sees nothing wrong with either one.
+ *
+ * Where both tables cover the same day the ledger wins: it is what happened.
+ */
+function checkConsecutiveDays(roster, ledger, report) {
   var heldBy = {};
-  rows.forEach(function (r) {
-    if (!heldBy[r.name]) heldBy[r.name] = {};
-    heldBy[r.name][r.date] = r;
-  });
+
+  function add(rows, where) {
+    rows.forEach(function (r) {
+      if (!r.name) return;
+      if (!heldBy[r.name]) heldBy[r.name] = {};
+      heldBy[r.name][r.date] = { post: r.post, where: where, row: r._row };
+    });
+  }
+  add(roster, TABS.ROSTER);
+  add(ledger, TABS.LEDGER);   // second, so a settled day overrides the plan
 
   Object.keys(heldBy).forEach(function (name) {
     Object.keys(heldBy[name]).forEach(function (date) {
-      if (heldBy[name][date].post !== '1st') return;
       var next = isoAddDays(date, 1);
+      var today = heldBy[name][date];
       var after = heldBy[name][next];
-      if (after) {
-        report(where + ' row ' + after._row,
-          name + ' holds ' + after.post + ' on ' + next + ', the rest day after a 1st on ' + date + '.');
-      }
+      if (!after) return;
+      report(after.where + ' row ' + after.row,
+        name + ' is on guard two days running: ' + today.post + ' on ' + date +
+        ' (' + today.where + ') and ' + after.post + ' on ' + next +
+        ' (' + after.where + ').');
     });
   });
 }
