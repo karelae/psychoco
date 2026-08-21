@@ -1,0 +1,18 @@
+# JetBrains IDEs
+.idea/
+.idea_modules/
+*.iml
+*.iws
+
+# Claude Code — local machine state
+.claude/settings.local.json
+.claude/worktrees/
+
+# OS cruft
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Build output and dependencies
+# Nothing here yet: the stack is undecided (TECHNICAL-README.md §1).
+# Add the relevant entries when it is chosen — do not pre-empt them.
