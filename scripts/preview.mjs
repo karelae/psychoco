@@ -28,16 +28,36 @@ const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'Ju
 const s = buildScenario([[2026, 10], [2026, 11], [2026, 12], [2027, 1]]);
 const psy = s.psy;
 
+// The board is always read at some point in the middle: months behind it are
+// published and credited, months ahead are rostered and are not. The scenario
+// credits everything it generates, so this puts the line back where a real
+// period has it — and it is what gives the forecast columns something to say.
+const TODAY = '2026-12-01';
+const ledger = s.ledger.filter((d) => d.date < TODAY);
+
 const board = psy.computeBalances(
-  s.people, s.absencesByName, s.ledger, s.period.start, s.asOf, s.fractionSpansByName
+  s.people, s.absencesByName, ledger, s.period.start, TODAY, s.fractionSpansByName
 );
+
+// Mirrors the projection in buildBoardData(): the same computeBalances over the
+// ledger plus everything still rostered, run out to the last rostered date.
+const planned = psy.projectedDuties(s.roster, ledger, s.holidays, s.config);
+const plannedH = {};
+for (const d of planned.duties) plannedH[d.name] = (plannedH[d.name] || 0) + d.pointsH;
+const ahead = planned.horizon > TODAY
+  ? psy.computeBalances(s.people, s.absencesByName, ledger.concat(planned.duties),
+      s.period.start, planned.horizon, s.fractionSpansByName)
+  : board;
+const projectedH = {};
+for (const r of ahead.rows) projectedH[r.name] = r.balanceH;
 
 // Mirrors buildBoardData() in 80_webapp.gs. Note what is absent: no absence
 // rows, no absence reasons, no email addresses. Availability leaves as a day
 // count and nothing more (README §7.1).
 const data = {
   period: { start: s.period.start, end: s.period.end, operator: 'Demo operator' },
-  today: s.asOf,
+  today: TODAY,
+  horizon: planned.horizon > TODAY ? planned.horizon : '',
   you: YOU,
   targetRate: psy.fromHundredths(board.targetRateH),
   totalPoints: psy.fromHundredths(board.totalPointsH),
@@ -59,14 +79,14 @@ const data = {
     points: psy.fromHundredths(r.pointsH),
     expected: psy.fromHundredths(r.expectedH),
     balance: psy.fromHundredths(r.balanceH),
-    rate: psy.fromHundredths(r.rateH)
+    rate: psy.fromHundredths(r.rateH),
+    rosteredPoints: psy.fromHundredths(plannedH[r.name] || 0),
+    projectedBalance: psy.fromHundredths(projectedH[r.name] || 0)
   })),
-  // Mirrors upcomingCalendar() in 80_webapp.gs. The real board starts from
-  // today; here "today" is the last day generated, so show from December on
-  // instead of an empty calendar.
-  upcoming: upcomingCalendar('2026-12-01', 150),
+  // Mirrors upcomingCalendar() in 80_webapp.gs — everything rostered from today.
+  upcoming: upcomingCalendar(TODAY, 150),
   // Mirrors yourDuty() in 80_webapp.gs — uncapped on purpose.
-  yours: yourDuty('2026-12-01', YOU)
+  yours: yourDuty(TODAY, YOU)
 };
 
 function yourDuty(fromIso, name) {

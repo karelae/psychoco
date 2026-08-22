@@ -266,6 +266,31 @@ Every `WorkedDuty` records the `ScoringConfig` version it was priced under. So:
   recalculation** — the operator is shown what will move before it moves, and the
   recalculation is an audited event.
 
+### 3.2.1 Projecting the roster forward
+
+README §3.2 wants the board to show where the current roster lands everyone, not
+only what the ledger has credited. `projectedDuties()` in `20_fairness.gs` is the
+whole of it: it returns every rostered post the ledger has not credited, priced
+under the current config, plus the last date they run to.
+
+Two details carry the correctness:
+
+- **Uncredited is matched on date and post, never on name.** A day settled as a
+  drop-out is credited even though the Roster tab still names whoever was
+  originally down for it. Matching on the name would double-count the chain and
+  miss the person who actually worked (§2.1).
+- **The projection is `computeBalances()` again, not arithmetic on top of a
+  balance.** It runs over the ledger plus the outstanding duties, out to the
+  horizon rather than to today, so each person's availability covers the same
+  window as the points being shared. Adding planned points to a balance computed
+  to today would measure someone's points against a share of a period they had
+  not been measured across, and the error grows with the length of the roster.
+
+The forecast is computed in `buildBoardData()` and shipped to everyone; the
+operator's pool panel asks for the same figures through `opsStanding`. Where the
+roster does not run past today, the horizon is empty and the board hides both
+columns rather than showing a projection equal to the present.
+
 ### 3.3 Deriving the ledger
 
 `balance` per README §3.2 is a pure function of the `WorkedDuty` rows, the

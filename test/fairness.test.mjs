@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { loadPure, plain } from './harness.mjs';
+import { loadPure, plain, defaultConfig } from './harness.mjs';
 
 const psy = loadPure();
 
@@ -295,5 +295,58 @@ test('working fraction over time', async (t) => {
       'but she is now due less, so her balance rises and she gets fewer shifts'
     );
     assert.ok(pick(after, 'Anna').balanceH > pick(before, 'Anna').balanceH);
+  });
+});
+
+// README §3 — the board answers "has this been fair" from the ledger, and
+// "is it about to be" from the roster on top of it.
+test('projection', async (t) => {
+  const config = defaultConfig(psy);
+  const holidays = { '2026-12-25': 'protected' };
+
+  const roster = [
+    { date: '2026-10-03', post: '1st', name: 'Anna' },   // saturday, credited below
+    { date: '2026-10-03', post: '2nd', name: 'Bo' },
+    { date: '2026-11-09', post: '3rd', name: 'Anna' },   // weekday, still to come
+    { date: '2026-12-25', post: '1st', name: 'Bo' }      // protected, still to come
+  ];
+  const ledger = [
+    { date: '2026-10-03', post: '1st', name: 'Anna', pointsH: 900 },
+    { date: '2026-10-03', post: '2nd', name: 'Bo', pointsH: 450 }
+  ];
+
+  await t.test('should_drop_slots_the_ledger_has_already_credited', () => {
+    const { duties } = psy.projectedDuties(roster, ledger, holidays, config);
+    assert.deepEqual(plain(duties).map((d) => d.date + ' ' + d.post),
+      ['2026-11-09 3rd', '2026-12-25 1st']);
+  });
+
+  await t.test('should_price_each_remaining_slot_under_the_current_config', () => {
+    const { duties } = psy.projectedDuties(roster, ledger, holidays, config);
+    // 3rd on a weekday: 1 x 1. 1st on a protected day: 6 x 2.2.
+    assert.deepEqual(plain(duties).map((d) => d.pointsH), [100, 1320]);
+  });
+
+  await t.test('should_report_the_last_rostered_date_as_the_horizon', () => {
+    const { horizon } = psy.projectedDuties(roster, ledger, holidays, config);
+    assert.equal(horizon, '2026-12-25');
+  });
+
+  // A settled drop-out leaves the Roster naming somebody who did not work it.
+  // Matching on date and post is what keeps that day out of the projection
+  // (TECHNICAL-README §2.1).
+  await t.test('should_treat_a_settled_dropout_day_as_credited_though_the_names_differ', () => {
+    const settled = [
+      { date: '2026-11-09', post: '3rd', name: 'Somebody else', pointsH: 100 }
+    ];
+    const { duties } = psy.projectedDuties(roster, ledger.concat(settled), holidays, config);
+    assert.deepEqual(plain(duties).map((d) => d.date), ['2026-12-25']);
+  });
+
+  await t.test('should_leave_the_horizon_empty_when_the_ledger_has_caught_up', () => {
+    const all = roster.map((r) => ({ date: r.date, post: r.post, name: r.name, pointsH: 0 }));
+    const { duties, horizon } = psy.projectedDuties(roster, all, holidays, config);
+    assert.equal(duties.length, 0);
+    assert.equal(horizon, '');
   });
 });

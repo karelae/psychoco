@@ -38,6 +38,8 @@
   .pill { display: inline-block; padding: .1rem .45rem; border-radius: 999px; font-size: .8rem; font-weight: 600; }
   .pill.owed { color: var(--owed); background: var(--owed-bg); }
   .pill.over { color: var(--over); background: var(--over-bg); }
+  /* A forecast should not read as loudly as a number already earned. */
+  .pill.faint { background: none; opacity: .75; font-weight: 500; }
   .note { color: var(--muted); font-size: .82rem; margin-top: .5rem; }
   .cards { display: flex; flex-wrap: wrap; gap: .5rem 1.5rem; margin: .75rem 0 0; }
   .card .k { color: var(--muted); font-size: .78rem; text-transform: uppercase; letter-spacing: .04em; }
@@ -124,6 +126,11 @@
     <dd>Carried ÷ available days. Compare it with the target rate above — everyone should sit near it.</dd>
     <dt>Balance</dt>
     <dd>Carried − Due, in points. One weekday third call is worth 1; a first call on Christmas, 13.2.</dd>
+    <dt>Rostered</dt>
+    <dd>Points already on the roster that have not been credited, because those days
+        have not been worked and settled yet.</dd>
+    <dt>Projected</dt>
+    <dd id="projectedNote">Where your balance lands if the roster is worked as it stands.</dd>
   </dl>
   <p class="rule">
     <span class="owedtxt">Negative means you are owed duty</span> and are nearer the front of the
@@ -132,6 +139,7 @@
   <p class="rule">
     Balances are a redistribution, so across everyone they add up to zero.
   </p>
+  <p class="rule" id="forecastNote"></p>
 
   <h2 id="mineHeading">Your duty</h2>
   <div class="scroll"><table id="mine"></table></div>
@@ -199,20 +207,34 @@
     var board = document.getElementById('board');
     while (board.firstChild) board.removeChild(board.firstChild);
     var head = board.createTHead();
-    row(head, [el('th', 'Name'), el('th', 'Available days', 'num'), el('th', 'Carried', 'num'),
-               el('th', 'Due', 'num'), el('th', 'Per day', 'num'), el('th', 'Balance', 'num')]);
+    var heads = [el('th', 'Name'), el('th', 'Available days', 'num'), el('th', 'Carried', 'num'),
+                 el('th', 'Due', 'num'), el('th', 'Per day', 'num'), el('th', 'Balance', 'num')];
+    if (DATA.horizon) {
+      heads.push(el('th', 'Rostered', 'num'), el('th', 'Projected', 'num'));
+    }
+    row(head, heads);
+
     var body = board.createTBody();
     rows.forEach(function (r) {
-      var pill = el('span', (r.balance > 0 ? '+' : '') + r.balance,
-        'pill ' + (r.balance < 0 ? 'owed' : 'over'));
-      var balanceCell = el('td', null, 'num');
-      balanceCell.appendChild(pill);
-      var tr = row(body, [
+      var cells = [
         el('td', r.name), el('td', r.availableDays, 'num'), el('td', r.points, 'num'),
-        el('td', r.expected, 'num'), el('td', r.rate, 'num'), balanceCell
-      ]);
+        el('td', r.expected, 'num'), el('td', r.rate, 'num'), balancePill(r.balance)
+      ];
+      if (DATA.horizon) {
+        cells.push(el('td', r.rosteredPoints ? r.rosteredPoints : '—', 'num'));
+        cells.push(balancePill(r.projectedBalance, 'faint'));
+      }
+      var tr = row(body, cells);
       if (DATA.you && r.name === DATA.you) tr.className = 'you';
     });
+  }
+
+  function balancePill(balance, extra) {
+    var pill = el('span', (balance > 0 ? '+' : '') + balance,
+      'pill ' + (balance < 0 ? 'owed' : 'over') + (extra ? ' ' + extra : ''));
+    var cell = el('td', null, 'num');
+    cell.appendChild(pill);
+    return cell;
   }
 
   renderStanding(DATA.rows, DATA);
@@ -309,6 +331,25 @@
   document.getElementById('scoringNote').textContent =
     'Points = base for the post x the day multiplier. Multipliers never compound — ' +
     'when a day is both a Sunday and a public holiday, the higher multiplier applies on its own.';
+
+  // The forecast is only honest with its horizon printed beside it, and there is
+  // nothing to forecast from until the roster runs past today.
+  if (DATA.horizon) {
+    document.getElementById('projectedNote').textContent =
+      'Where your balance lands if the roster is worked as it stands, out to ' +
+      DATA.horizon + '.';
+    document.getElementById('forecastNote').textContent =
+      'Projected is a forecast, not a promise. It reads the roster as it stands today, ' +
+      'and a swap you arrange between yourselves is not in it.';
+  } else {
+    var terms = document.querySelectorAll('dl.cols dt');
+    for (var t = 0; t < terms.length; t++) {
+      if (terms[t].textContent === 'Rostered' || terms[t].textContent === 'Projected') {
+        terms[t].style.display = 'none';
+        terms[t].nextElementSibling.style.display = 'none';
+      }
+    }
+  }
 
   // --- operator mode -------------------------------------------------------
   // Everything below is inert unless the server decided this reader is the

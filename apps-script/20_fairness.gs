@@ -177,3 +177,40 @@ function expectedShares(people, absencesByName, priorPointsByName, windowPointsH
   }
   return { expectedH: expectedH, availH: availH, totalAvailH: totalAvailH, totalH: totalH };
 }
+
+/**
+ * The rostered posts the ledger has not credited yet, priced, and the last date
+ * they run to.
+ *
+ * This is what lets a balance be projected forward: today's balance answers
+ * "has this been fair so far", and the same computeBalances() over the ledger
+ * plus these answers "is it about to be". Both questions get asked, and the
+ * second one is the one somebody halfway through a heavy month is really
+ * asking (README §3).
+ *
+ * Credited is matched on date and post, never on name. A day settled as a
+ * drop-out is credited even though the Roster tab still names whoever was
+ * originally down for it — plan and record are separate, and the record wins
+ * (TECHNICAL-README §2.1).
+ */
+function projectedDuties(roster, ledger, holidayKindByDate, config) {
+  var credited = {};
+  for (var i = 0; i < ledger.length; i++) {
+    credited[ledger[i].date + '|' + ledger[i].post] = true;
+  }
+
+  var duties = [];
+  var horizon = '';
+  for (var r = 0; r < roster.length; r++) {
+    var row = roster[r];
+    if (credited[row.date + '|' + row.post]) continue;
+    duties.push({
+      date: row.date,
+      post: row.post,
+      name: row.name,
+      pointsH: pointsFor(row.post, row.date, holidayKindByDate, config)
+    });
+    if (row.date > horizon) horizon = row.date;
+  }
+  return { duties: duties, horizon: horizon };
+}

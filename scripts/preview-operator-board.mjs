@@ -144,6 +144,18 @@ const standing = psy.computeBalances(
   s.people, s.absencesByName, ledger, s.period.start, TODAY, s.fractionSpansByName
 );
 
+// The same projection buildBoardData() now does, so the viewer half of this
+// page shows what the group would really be served.
+const planned = psy.projectedDuties(s.roster, ledger, s.holidays, s.config);
+const plannedH = {};
+for (const d of planned.duties) plannedH[d.name] = (plannedH[d.name] || 0) + d.pointsH;
+const ahead = planned.horizon > TODAY
+  ? psy.computeBalances(s.people, s.absencesByName, ledger.concat(planned.duties),
+      s.period.start, planned.horizon, s.fractionSpansByName)
+  : standing;
+const projectedH = {};
+for (const r of ahead.rows) projectedH[r.name] = r.balanceH;
+
 const dropoutsByName = {};
 escalations.forEach((e) => {
   dropoutsByName[e.droppedOut] = (dropoutsByName[e.droppedOut] || 0) + 1;
@@ -152,6 +164,7 @@ escalations.forEach((e) => {
 const data = {
   period: { start: s.period.start, end: s.period.end, operator: OPERATOR.name },
   today: TODAY,
+  horizon: planned.horizon > TODAY ? planned.horizon : '',
   you: OPERATOR.name,
   targetRate: psy.fromHundredths(standing.targetRateH),
   totalPoints: psy.fromHundredths(standing.totalPointsH),
@@ -187,7 +200,9 @@ function standingRow(r) {
     points: psy.fromHundredths(r.pointsH),
     expected: psy.fromHundredths(r.expectedH),
     balance: psy.fromHundredths(r.balanceH),
-    rate: psy.fromHundredths(r.rateH)
+    rate: psy.fromHundredths(r.rateH),
+    rosteredPoints: psy.fromHundredths(plannedH[r.name] || 0),
+    projectedBalance: psy.fromHundredths(projectedH[r.name] || 0)
   };
 }
 
