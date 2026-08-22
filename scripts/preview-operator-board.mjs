@@ -492,6 +492,8 @@ function opsStubFactory(S) {
             rate: dec(r.rateH)
           };
         }),
+        totalPoints: dec(result.totalPointsH),
+        targetRate: dec(result.targetRateH),
         dropoutsByName: counts
       };
     },

@@ -741,11 +741,19 @@ var PsychocoOps = (function () {
     cell.appendChild(grid);
   }
 
+  /**
+   * Re-read the standing after a write, here and on the viewer's half of the
+   * page. Both, always: the operator switching tabs to check what their own
+   * change did is the most likely next thing they do.
+   */
   function refreshPool() {
     call('opsStanding', {}, function (fresh) {
       state.board.rows = fresh.rows;
+      state.board.totalPoints = fresh.totalPoints;
+      state.board.targetRate = fresh.targetRate;
       state.board.operator.dropoutsByName = fresh.dropoutsByName;
       renderPool();
+      if (window.PsychocoBoard) PsychocoBoard.renderStanding(fresh.rows, fresh);
     }, function () { /* the standing on screen is merely stale, not wrong */ });
   }
 

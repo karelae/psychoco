@@ -174,33 +174,50 @@
     (DATA.period.operator ? ' · operated by ' + DATA.period.operator : '') +
     ' · scoring version ' + DATA.configVersion;
 
-  var cards = document.getElementById('cards');
-  [['Points distributed', DATA.totalPoints],
-   ['Target rate', DATA.targetRate + ' / available day'],
-   ['People', DATA.rows.length],
-   ['Today', DATA.today]].forEach(function (pair) {
-    var c = el('div', null, 'card');
-    c.appendChild(el('div', pair[0], 'k'));
-    c.appendChild(el('div', pair[1], 'v'));
-    cards.appendChild(c);
-  });
+  /**
+   * The standing, and the summary figures above it.
+   *
+   * Rebuildable rather than built once: settling a drop-out in operator mode
+   * changes the ledger, balances are derived from the ledger on every read
+   * (TECHNICAL-README §3.3), and a stale table one tab away from the write that
+   * moved it is how a fairness board loses the group's trust.
+   */
+  function renderStanding(rows, totals) {
+    var cards = document.getElementById('cards');
+    while (cards.firstChild) cards.removeChild(cards.firstChild);
+    [['Points distributed', totals.totalPoints],
+     ['Target rate', totals.targetRate + ' / available day'],
+     ['People', rows.length],
+     ['Today', DATA.today]].forEach(function (pair) {
+      var c = el('div', null, 'card');
+      c.appendChild(el('div', pair[0], 'k'));
+      c.appendChild(el('div', pair[1], 'v'));
+      cards.appendChild(c);
+    });
 
-  var board = document.getElementById('board');
-  var head = board.createTHead();
-  row(head, [el('th', 'Name'), el('th', 'Available days', 'num'), el('th', 'Carried', 'num'),
-             el('th', 'Due', 'num'), el('th', 'Per day', 'num'), el('th', 'Balance', 'num')]);
-  var body = board.createTBody();
-  DATA.rows.forEach(function (r) {
-    var pill = el('span', (r.balance > 0 ? '+' : '') + r.balance,
-      'pill ' + (r.balance < 0 ? 'owed' : 'over'));
-    var balanceCell = el('td', null, 'num');
-    balanceCell.appendChild(pill);
-    var tr = row(body, [
-      el('td', r.name), el('td', r.availableDays, 'num'), el('td', r.points, 'num'),
-      el('td', r.expected, 'num'), el('td', r.rate, 'num'), balanceCell
-    ]);
-    if (DATA.you && r.name === DATA.you) tr.className = 'you';
-  });
+    var board = document.getElementById('board');
+    while (board.firstChild) board.removeChild(board.firstChild);
+    var head = board.createTHead();
+    row(head, [el('th', 'Name'), el('th', 'Available days', 'num'), el('th', 'Carried', 'num'),
+               el('th', 'Due', 'num'), el('th', 'Per day', 'num'), el('th', 'Balance', 'num')]);
+    var body = board.createTBody();
+    rows.forEach(function (r) {
+      var pill = el('span', (r.balance > 0 ? '+' : '') + r.balance,
+        'pill ' + (r.balance < 0 ? 'owed' : 'over'));
+      var balanceCell = el('td', null, 'num');
+      balanceCell.appendChild(pill);
+      var tr = row(body, [
+        el('td', r.name), el('td', r.availableDays, 'num'), el('td', r.points, 'num'),
+        el('td', r.expected, 'num'), el('td', r.rate, 'num'), balanceCell
+      ]);
+      if (DATA.you && r.name === DATA.you) tr.className = 'you';
+    });
+  }
+
+  renderStanding(DATA.rows, DATA);
+
+  // The one hook operator mode has into the viewer's half of the page.
+  window.PsychocoBoard = { renderStanding: renderStanding };
 
   // Your own duty first, and all of it: the question this page mostly gets asked
   // is "when am I next on", and it should not need a swipe through a calendar to
