@@ -340,6 +340,31 @@ function opsStubFactory(S) {
   function blockedOf(explained) {
     return explained.blocked.map(function (b) { return { name: b.name, reason: b.reason }; });
   }
+  /**
+   * Every rostered post the ledger has not credited yet.
+   *
+   * Matched on date and post rather than on name, so a day settled as a
+   * drop-out counts as credited even though the roster still names whoever was
+   * originally down for it (TECHNICAL-README §2.1 — plan and record are
+   * separate, and the record wins).
+   */
+  function plannedDuties() {
+    var credited = {};
+    S.ledger.forEach(function (d) { credited[d.date + '|' + d.post] = true; });
+    return S.roster.filter(function (r) {
+      return !credited[r.date + '|' + r.post];
+    }).map(function (r) {
+      return { date: r.date, post: r.post, name: r.name, pointsH: priceH(r.post, r.date) };
+    });
+  }
+
+  /** The last day anybody is rostered for — how far a projection can honestly see. */
+  function horizon(planned) {
+    var last = '';
+    planned.forEach(function (d) { if (d.date > last) last = d.date; });
+    return last > S.today ? last : '';
+  }
+
   function clone(map) {
     var out = {};
     Object.keys(map).forEach(function (key) { out[key] = (map[key] || []).slice(); });
@@ -446,6 +471,12 @@ function opsStubFactory(S) {
       var awayDays = 0;
       absences.forEach(function (a) { awayDays += isoDaysBetween(a.from, a.to); });
 
+      var upcoming = plannedDuties().filter(function (d) { return d.name === req.name; })
+        .sort(function (a, b) {
+          if (a.date !== b.date) return a.date < b.date ? -1 : 1;
+          return POST_RANK[a.post] - POST_RANK[b.post];
+        });
+
       return {
         name: req.name,
         dropouts: drops.map(function (e) {
@@ -471,16 +502,49 @@ function opsStubFactory(S) {
         fractions: (S.fractionSpansByName[req.name] || []).map(function (f) {
           return { from: f.from, to: f.to, fraction: f.fractionH };
         }),
-        awayDays: awayDays
+        awayDays: awayDays,
+        upcoming: upcoming.map(function (d) {
+          return {
+            date: d.date, post: d.post, points: dec(d.pointsH),
+            dayKind: priceExplain(d.post, d.date, S.holidays, S.config).dayKind
+          };
+        }),
+        plannedTotal: dec(upcoming.reduce(function (sum, d) { return sum + d.pointsH; }, 0))
       };
     },
 
+    /**
+     * The standing as earned, and the standing the current roster is heading
+     * for.
+     *
+     * The projection is not arithmetic on top of the balances — it is the same
+     * computeBalances() over the ledger plus everything still rostered, run out
+     * to the end of the roster so availability is measured over the same window
+     * the points cover. Anything else would compare a person's earned points
+     * against a share of a period they have not been measured across.
+     */
     opsStanding: function () {
       var result = standing();
+      var planned = plannedDuties();
+      var end = horizon(planned);
+
+      var plannedH = {};
+      planned.forEach(function (d) {
+        plannedH[d.name] = (plannedH[d.name] || 0) + d.pointsH;
+      });
+
+      var ahead = end
+        ? computeBalances(S.people, S.absencesByName, S.ledger.concat(planned),
+            S.period.start, end, S.fractionSpansByName)
+        : result;
+      var projectedH = {};
+      ahead.rows.forEach(function (r) { projectedH[r.name] = r.balanceH; });
+
       var counts = {};
       S.escalations.forEach(function (e) {
         counts[e.droppedOut] = (counts[e.droppedOut] || 0) + 1;
       });
+
       return {
         rows: result.rows.map(function (r) {
           return {
@@ -489,11 +553,14 @@ function opsStubFactory(S) {
             points: dec(r.pointsH),
             expected: dec(r.expectedH),
             balance: dec(r.balanceH),
-            rate: dec(r.rateH)
+            rate: dec(r.rateH),
+            rosteredPoints: dec(plannedH[r.name] || 0),
+            projectedBalance: dec(projectedH[r.name] || 0)
           };
         }),
         totalPoints: dec(result.totalPointsH),
         targetRate: dec(result.targetRateH),
+        horizon: end,
         dropoutsByName: counts
       };
     },

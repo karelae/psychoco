@@ -141,17 +141,21 @@
   .pool-scroll { max-height: 26rem; overflow: auto; }
   .pool-scroll thead th { position: sticky; top: 0; background: var(--bg); z-index: 1; }
   .pool-row { cursor: pointer; }
+  /* A forecast should not shout as loudly as a number already earned. */
+  .pill.faint { background: none; opacity: .75; font-weight: 500; }
   .pool-row td.chev { color: var(--muted); width: 1.4rem; }
   .pool-row.open td { background: var(--ops-soft); }
   .pool-row.open td.chev { color: var(--ops); }
   .detail td { background: var(--panel); white-space: normal; }
-  .detail .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+  .detail .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
                   gap: .8rem 1.5rem; padding: .2rem 0 .4rem; }
   .detail h5 { margin: 0 0 .3rem; font-size: .78rem; text-transform: uppercase;
                letter-spacing: .04em; color: var(--muted); }
   .detail ul { margin: 0; padding-left: 1.1rem; font-size: .85rem; }
   .detail li { margin-bottom: .15rem; }
   .detail .private { color: var(--danger); font-size: .78rem; margin: .45rem 0 0; }
+  .detail .linky { border: 0; background: none; padding: 0; min-height: 0;
+                   color: var(--accent); text-decoration: underline; font-size: .85rem; }
 
   .fields { display: flex; flex-wrap: wrap; gap: .5rem .8rem; align-items: center; font-size: .85rem; }
   .fields label { color: var(--muted); display: inline-flex; gap: .35rem; align-items: center; }
@@ -204,7 +208,9 @@
         <label class="check"><input type="checkbox" id="poolDropsOnly"> with drop-outs</label>
       </div>
     </div>
-    <p class="ops-sub">The standing everyone sees. Open a row for the part only you see.</p>
+    <p class="ops-sub">The standing everyone sees, and what the roster has coming on top of
+      it. Open a row for the part only you see.<br>
+      <span id="poolHorizon"></span></p>
     <div class="scroll pool-scroll"><table id="poolTable"></table></div>
   </section>
 
@@ -243,6 +249,7 @@ var PsychocoOps = (function () {
 
   var state = {
     board: null,        // the viewer payload, reused so nothing is fetched twice
+    pool: null,         // the standing with the roster projected on top of it
     day: null,          // the day currently loaded
     mode: null,         // null | 'dropout' | 'reassign'
     cascade: null,
@@ -623,12 +630,17 @@ var PsychocoOps = (function () {
    */
   function renderPool() {
     var table = clear(document.getElementById('poolTable'));
+    if (!state.pool) {
+      document.getElementById('poolHorizon').textContent = 'Reading the pool…';
+      return;
+    }
     var filter = document.getElementById('poolFilter').value.trim().toLowerCase();
     var dropsOnly = document.getElementById('poolDropsOnly').checked;
 
     var head = table.createTHead();
     var hr = document.createElement('tr');
-    ['', 'Name', 'Drop-outs', 'Available days', 'Carried', 'Due', 'Balance'].forEach(function (h, i) {
+    ['', 'Name', 'Drop-outs', 'Carried', 'Balance', 'Rostered', 'Projected']
+      .forEach(function (h, i) {
       hr.appendChild(el('th', h, i > 1 ? 'num' : ''));
     });
     head.appendChild(hr);
@@ -636,8 +648,8 @@ var PsychocoOps = (function () {
     var body = table.createTBody();
     var shown = 0;
 
-    state.board.rows.forEach(function (r) {
-      var drops = state.board.operator.dropoutsByName[r.name] || 0;
+    state.pool.rows.forEach(function (r) {
+      var drops = state.pool.dropoutsByName[r.name] || 0;
       if (filter && r.name.toLowerCase().indexOf(filter) < 0) return;
       if (dropsOnly && !drops) return;
       shown++;
@@ -647,15 +659,18 @@ var PsychocoOps = (function () {
       tr.appendChild(el('td', state.openPerson === r.name ? '▾' : '▸', 'chev'));
       tr.appendChild(el('td', r.name));
       tr.appendChild(el('td', drops || '—', 'num'));
-      tr.appendChild(el('td', r.availableDays, 'num'));
       tr.appendChild(el('td', pts(r.points), 'num'));
-      tr.appendChild(el('td', pts(r.expected), 'num'));
       // The same pill the group sees, for the same reason: the operator reading
       // this table is reading their own standing in it too.
-      var pill = el('span', signed(r.balance), 'pill ' + (r.balance < 0 ? 'owed' : 'over'));
-      var balanceCell = el('td', null, 'num');
-      balanceCell.appendChild(pill);
-      tr.appendChild(balanceCell);
+      tr.appendChild(pillCell(r.balance));
+
+      // What is already on the roster and not yet credited, and where that
+      // lands them. The carried column answers "has this been fair so far";
+      // these two answer "is it about to be", which is the question an operator
+      // is actually being asked when somebody complains.
+      tr.appendChild(el('td', r.rosteredPoints ? pts(r.rosteredPoints) : '—', 'num'));
+      tr.appendChild(pillCell(r.projectedBalance, 'faint'));
+
       tr.onclick = function () {
         state.openPerson = state.openPerson === r.name ? null : r.name;
         renderPool();
@@ -689,6 +704,24 @@ var PsychocoOps = (function () {
       tr.appendChild(cell);
       return tr;
     }
+
+    document.getElementById('poolHorizon').textContent = state.pool.horizon
+      ? 'Rostered and Projected look ahead to ' + state.pool.horizon +
+        ', the last day anybody is rostered for.'
+      : 'Nothing is rostered beyond what the ledger already holds.';
+  }
+
+  /**
+   * A balance as the group sees it. The projected one is drawn back a little:
+   * it is a forecast of a roster that can still change, and it should not read
+   * as loudly as a number somebody has already earned.
+   */
+  function pillCell(balance, extra) {
+    var pill = el('span', signed(balance), 'pill ' + (balance < 0 ? 'owed' : 'over') +
+      (extra ? ' ' + extra : ''));
+    var cell = el('td', null, 'num');
+    cell.appendChild(pill);
+    return cell;
   }
 
   function renderPerson(cell, person) {
@@ -736,6 +769,26 @@ var PsychocoOps = (function () {
       'private'));
     grid.appendChild(away);
 
+    var ahead = el('div');
+    ahead.appendChild(el('h5', 'Rostered ahead — ' + pts(person.plannedTotal) + ' points'));
+    if (!person.upcoming.length) {
+      ahead.appendChild(el('p', 'Nothing on the roster that the ledger has not already ' +
+        'credited.', 'ops-empty'));
+    } else {
+      var ul = el('ul');
+      person.upcoming.forEach(function (u) {
+        var li = el('li');
+        var link = el('button', u.date + ' · ' + u.post + ' · ' + u.dayKind +
+          ' · ' + pts(u.points), 'btn quiet linky');
+        link.type = 'button';
+        link.onclick = function (event) { event.stopPropagation(); openDay(u.date); };
+        li.appendChild(link);
+        ul.appendChild(li);
+      });
+      ahead.appendChild(ul);
+    }
+    grid.appendChild(ahead);
+
     cell.appendChild(grid);
   }
 
@@ -746,13 +799,19 @@ var PsychocoOps = (function () {
    */
   function refreshPool() {
     call('opsStanding', {}, function (fresh) {
+      state.pool = fresh;
       state.board.rows = fresh.rows;
       state.board.totalPoints = fresh.totalPoints;
       state.board.targetRate = fresh.targetRate;
-      state.board.operator.dropoutsByName = fresh.dropoutsByName;
       renderPool();
+      // The group's half of the page gets the earned figures only. What is
+      // merely rostered is not a standing, and putting a forecast on the board
+      // everyone reads is a decision for the group, not a side effect of this.
       if (window.PsychocoBoard) PsychocoBoard.renderStanding(fresh.rows, fresh);
-    }, function () { /* the standing on screen is merely stale, not wrong */ });
+    }, function (err) {
+      document.getElementById('poolHorizon').textContent =
+        String(err && err.message || err);
+    });
   }
 
   // -- time away ------------------------------------------------------------
@@ -1007,7 +1066,7 @@ var PsychocoOps = (function () {
     });
 
     loadDay(board.today);
-    renderPool();
+    refreshPool();
     renderAwayFields();
     renderLog();
   }
