@@ -22,6 +22,11 @@ function doGet() {
 
   var template = HtmlService.createTemplateFromFile('board');
   template.data = JSON.stringify(buildBoardData(gate.email));
+  // Nobody is served the operator layer yet: the panel is designed
+  // (operator.html) and its server side is not written. Until it is, this stays
+  // empty for every reader, which is also what it must stay for all but one of
+  // them afterwards.
+  template.operatorLayer = '';
   return template.evaluate()
     .setTitle('Psychoco')
     .addMetaTag('viewport', 'width=device-width, initial-scale=1')
@@ -32,6 +37,7 @@ function doGet() {
 function showBoard() {
   var template = HtmlService.createTemplateFromFile('board');
   template.data = JSON.stringify(buildBoardData(''));
+  template.operatorLayer = '';
   SpreadsheetApp.getUi().showModalDialog(
     template.evaluate().setWidth(900).setHeight(700),
     'Psychoco'
@@ -83,6 +89,23 @@ function buildBoardData(viewerEmail) {
   model.people.forEach(function (p) { if (p.email) emailToName[p.email] = p.name; });
   var you = emailToName[(viewerEmail || '').toLowerCase()] || null;
 
+  // Where the roster, as it stands, puts everybody. Same function over the
+  // ledger plus what is still rostered, run out to the last rostered date so
+  // availability covers the same window as the points (README §3). Not a
+  // promise — swaps are peer-to-peer and unrecorded — which is why the board
+  // labels it a forecast and keeps the earned balance as the headline.
+  var planned = projectedDuties(model.roster, model.ledger, model.holidayKindByDate, model.config);
+  var plannedH = {};
+  planned.duties.forEach(function (d) {
+    plannedH[d.name] = (plannedH[d.name] || 0) + d.pointsH;
+  });
+  var ahead = planned.horizon > today
+    ? computeBalances(model.people, model.absencesByName, model.ledger.concat(planned.duties),
+        model.period.start, planned.horizon, model.fractionSpansByName)
+    : board;
+  var projectedH = {};
+  ahead.rows.forEach(function (r) { projectedH[r.name] = r.balanceH; });
+
   var rows = board.rows.map(function (r) {
     return {
       name: r.name,
@@ -90,7 +113,9 @@ function buildBoardData(viewerEmail) {
       points: fromHundredths(r.pointsH),
       expected: fromHundredths(r.expectedH),
       balance: fromHundredths(r.balanceH),
-      rate: fromHundredths(r.rateH)
+      rate: fromHundredths(r.rateH),
+      rosteredPoints: fromHundredths(plannedH[r.name] || 0),
+      projectedBalance: fromHundredths(projectedH[r.name] || 0)
     };
   });
 
@@ -105,6 +130,7 @@ function buildBoardData(viewerEmail) {
   return {
     period: { start: model.period.start, end: model.period.end, operator: model.period.operator },
     today: today,
+    horizon: planned.horizon > today ? planned.horizon : '',
     you: you,
     targetRate: fromHundredths(board.targetRateH),
     totalPoints: fromHundredths(board.totalPointsH),

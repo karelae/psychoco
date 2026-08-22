@@ -311,6 +311,22 @@ Because `balance` is denominated in points, it is directly comparable to the
 cost of an actual shift. A balance of −9 says: this person is owed roughly one
 first-level Sunday.
 
+**The board also shows where the current roster lands everyone.** A balance
+built only from the ledger answers "has this been fair so far", and somebody
+halfway through a heavy month is asking the other question: "is it about to be".
+So alongside the earned balance the board shows the points already rostered and
+not yet credited, and the balance those would produce if the roster is worked as
+it stands. It is the same calculation over the ledger plus the outstanding
+roster, measured out to the last rostered day so availability covers the same
+window as the points.
+
+That number is a **forecast, not a promise**, and the board says so. The roster
+can be regenerated, an assignment can be overridden, and a swap arranged between
+two people is not recorded anywhere (§8). Its real use is that it makes the
+correction visible: someone who is heavily owed should be able to see the next
+month closing the gap, and if it does not, that is worth the operator knowing
+before anyone complains.
+
 ### 3.3 Worked example
 
 A 92-day stretch, three people:
@@ -568,7 +584,10 @@ the period records who that is, so every change has a name against it.
 What that means for the group in practice:
 
 - **Everyone sees the same board.** Every balance, every expected share, the
-  whole roster, for everybody.
+  whole roster, for everybody — including what each person is rostered for next
+  and the balance that would produce (§3.2). None of it is derived from anything
+  the group cannot already see; withholding it would only mean people doing the
+  arithmetic by hand from the calendar.
 - **Nobody sees individual absence records.** Balances and rosters are public by
   design; "R was off sick 3–7 March" is not the group's business. The viewer sees
   availability as a count of available days, which is all the fairness maths

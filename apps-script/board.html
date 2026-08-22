@@ -5,16 +5,17 @@
 <meta charset="utf-8">
 <style>
   :root {
+    /* One palette, light, whatever the reader's device is set to. Declaring it
+       matters beyond the tokens below: without it a browser in dark mode still
+       paints its own dark date pickers and dropdowns into operator mode. */
+    color-scheme: light;
     --bg: #ffffff; --fg: #1a1a1a; --muted: #6b6b6b; --line: #e2e2e2;
-    --owed: #0b6b3a; --owed-bg: #e8f5ee; --over: #8a2f2f; --over-bg: #fbeceb;
+    /* Red is duty coming, green is clear. The question a reader brings to this
+       page is "am I about to be called", not "am I in credit", so being owed
+       duty is the one that has to catch the eye. The sign is always printed
+       alongside, so nothing here is carried by colour alone. */
+    --owed: #8a2f2f; --owed-bg: #fbeceb; --over: #0b6b3a; --over-bg: #e8f5ee;
     --heavy: #fff8e6; --accent: #2b4c7e; --panel: #f7f7f5; --mine-bg: #eaf1fb;
-  }
-  @media (prefers-color-scheme: dark) {
-    :root {
-      --bg: #16181a; --fg: #e9e9e9; --muted: #9aa0a6; --line: #2e3236;
-      --owed: #7ddba4; --owed-bg: #17301f; --over: #f0a3a3; --over-bg: #331b1b;
-      --heavy: #2a2618; --accent: #8fb3e8; --panel: #1d2023; --mine-bg: #1b2739;
-    }
   }
   * { box-sizing: border-box; }
   body {
@@ -37,6 +38,8 @@
   .pill { display: inline-block; padding: .1rem .45rem; border-radius: 999px; font-size: .8rem; font-weight: 600; }
   .pill.owed { color: var(--owed); background: var(--owed-bg); }
   .pill.over { color: var(--over); background: var(--over-bg); }
+  /* A forecast should not read as loudly as a number already earned. */
+  .pill.faint { background: none; opacity: .75; font-weight: 500; }
   .note { color: var(--muted); font-size: .82rem; margin-top: .5rem; }
   .cards { display: flex; flex-wrap: wrap; gap: .5rem 1.5rem; margin: .75rem 0 0; }
   .card .k { color: var(--muted); font-size: .78rem; text-transform: uppercase; letter-spacing: .04em; }
@@ -73,6 +76,22 @@
   .rule { font-size: .84rem; margin: .7rem 0 0; }
   .rule .owedtxt { color: var(--owed); font-weight: 600; }
   .rule .overtxt { color: var(--over); font-weight: 600; }
+
+  /* The mode switch. Hidden for everybody the server did not hand an operator
+     block to, which is everybody but one person. */
+  .modes { display: none; gap: .3rem; margin: .9rem 0 0; }
+  .modes.on { display: flex; }
+  .modes button {
+    font: inherit; font-size: .85rem; min-height: 2.2rem; padding: .3rem .9rem;
+    border: 1px solid var(--line); background: var(--panel); color: var(--muted);
+    border-radius: 4px; cursor: pointer;
+  }
+  .modes button.on { background: var(--bg); color: var(--fg); font-weight: 600;
+                     box-shadow: inset 0 -2px 0 var(--accent); }
+  /* In operator mode a calendar day is a way in to that day, so it has to look
+     like one. */
+  .cal .cell.ops-click { cursor: pointer; }
+  .cal .cell.ops-click:hover { box-shadow: inset 0 0 0 2px var(--accent); }
   @media (max-width: 34rem) {
     dl.cols { grid-template-columns: 1fr; gap: .05rem; }
     dl.cols dd { margin-bottom: .45rem; }
@@ -83,6 +102,15 @@
 <div class="wrap">
   <h1>Psychoco</h1>
   <div class="sub" id="periodLine"></div>
+
+  <!-- The operator reads the same board as everyone else and switches modes to
+       change something; they are not given a different page (operator.html). -->
+  <nav class="modes" id="modes">
+    <button type="button" class="on" data-mode="viewer">My schedule</button>
+    <button type="button" data-mode="operator">Operator</button>
+  </nav>
+
+<div id="viewerMode">
   <div class="cards" id="cards"></div>
 
   <h2>Standing</h2>
@@ -98,6 +126,11 @@
     <dd>Carried ÷ available days. Compare it with the target rate above — everyone should sit near it.</dd>
     <dt>Balance</dt>
     <dd>Carried − Due, in points. One weekday third call is worth 1; a first call on Christmas, 13.2.</dd>
+    <dt>Rostered</dt>
+    <dd>Points already on the roster that have not been credited, because those days
+        have not been worked and settled yet.</dd>
+    <dt>Projected</dt>
+    <dd id="projectedNote">Where your balance lands if the roster is worked as it stands.</dd>
   </dl>
   <p class="rule">
     <span class="owedtxt">Negative means you are owed duty</span> and are nearer the front of the
@@ -106,6 +139,7 @@
   <p class="rule">
     Balances are a redistribution, so across everyone they add up to zero.
   </p>
+  <p class="rule" id="forecastNote"></p>
 
   <h2 id="mineHeading">Your duty</h2>
   <div class="scroll"><table id="mine"></table></div>
@@ -118,6 +152,13 @@
   <h2>How a shift is priced</h2>
   <div class="scroll"><table id="scoring"></table></div>
   <p class="note" id="scoringNote"></p>
+</div><!-- /viewerMode -->
+
+<!-- Filled in only for the operator: the server substitutes include('operator')
+     for them and an empty string for everyone else, so the group is never even
+     served the markup. The hiding is cosmetic; the access control is that every
+     one of those calls re-checks the caller server-side. -->
+<div id="operatorMode" hidden><?!= operatorLayer ?></div>
 </div>
 
 <script>
@@ -142,33 +183,64 @@
     (DATA.period.operator ? ' · operated by ' + DATA.period.operator : '') +
     ' · scoring version ' + DATA.configVersion;
 
-  var cards = document.getElementById('cards');
-  [['Points distributed', DATA.totalPoints],
-   ['Target rate', DATA.targetRate + ' / available day'],
-   ['People', DATA.rows.length],
-   ['Today', DATA.today]].forEach(function (pair) {
-    var c = el('div', null, 'card');
-    c.appendChild(el('div', pair[0], 'k'));
-    c.appendChild(el('div', pair[1], 'v'));
-    cards.appendChild(c);
-  });
+  /**
+   * The standing, and the summary figures above it.
+   *
+   * Rebuildable rather than built once: settling a drop-out in operator mode
+   * changes the ledger, balances are derived from the ledger on every read
+   * (TECHNICAL-README §3.3), and a stale table one tab away from the write that
+   * moved it is how a fairness board loses the group's trust.
+   */
+  function renderStanding(rows, totals) {
+    var cards = document.getElementById('cards');
+    while (cards.firstChild) cards.removeChild(cards.firstChild);
+    [['Points distributed', totals.totalPoints],
+     ['Target rate', totals.targetRate + ' / available day'],
+     ['People', rows.length],
+     ['Today', DATA.today]].forEach(function (pair) {
+      var c = el('div', null, 'card');
+      c.appendChild(el('div', pair[0], 'k'));
+      c.appendChild(el('div', pair[1], 'v'));
+      cards.appendChild(c);
+    });
 
-  var board = document.getElementById('board');
-  var head = board.createTHead();
-  row(head, [el('th', 'Name'), el('th', 'Available days', 'num'), el('th', 'Carried', 'num'),
-             el('th', 'Due', 'num'), el('th', 'Per day', 'num'), el('th', 'Balance', 'num')]);
-  var body = board.createTBody();
-  DATA.rows.forEach(function (r) {
-    var pill = el('span', (r.balance > 0 ? '+' : '') + r.balance,
-      'pill ' + (r.balance < 0 ? 'owed' : 'over'));
-    var balanceCell = el('td', null, 'num');
-    balanceCell.appendChild(pill);
-    var tr = row(body, [
-      el('td', r.name), el('td', r.availableDays, 'num'), el('td', r.points, 'num'),
-      el('td', r.expected, 'num'), el('td', r.rate, 'num'), balanceCell
-    ]);
-    if (DATA.you && r.name === DATA.you) tr.className = 'you';
-  });
+    var board = document.getElementById('board');
+    while (board.firstChild) board.removeChild(board.firstChild);
+    var head = board.createTHead();
+    var heads = [el('th', 'Name'), el('th', 'Available days', 'num'), el('th', 'Carried', 'num'),
+                 el('th', 'Due', 'num'), el('th', 'Per day', 'num'), el('th', 'Balance', 'num')];
+    if (DATA.horizon) {
+      heads.push(el('th', 'Rostered', 'num'), el('th', 'Projected', 'num'));
+    }
+    row(head, heads);
+
+    var body = board.createTBody();
+    rows.forEach(function (r) {
+      var cells = [
+        el('td', r.name), el('td', r.availableDays, 'num'), el('td', r.points, 'num'),
+        el('td', r.expected, 'num'), el('td', r.rate, 'num'), balancePill(r.balance)
+      ];
+      if (DATA.horizon) {
+        cells.push(el('td', r.rosteredPoints ? r.rosteredPoints : '—', 'num'));
+        cells.push(balancePill(r.projectedBalance, 'faint'));
+      }
+      var tr = row(body, cells);
+      if (DATA.you && r.name === DATA.you) tr.className = 'you';
+    });
+  }
+
+  function balancePill(balance, extra) {
+    var pill = el('span', (balance > 0 ? '+' : '') + balance,
+      'pill ' + (balance < 0 ? 'owed' : 'over') + (extra ? ' ' + extra : ''));
+    var cell = el('td', null, 'num');
+    cell.appendChild(pill);
+    return cell;
+  }
+
+  renderStanding(DATA.rows, DATA);
+
+  // The one hook operator mode has into the viewer's half of the page.
+  window.PsychocoBoard = { renderStanding: renderStanding };
 
   // Your own duty first, and all of it: the question this page mostly gets asked
   // is "when am I next on", and it should not need a swipe through a calendar to
@@ -230,6 +302,14 @@
       });
       if (isMine) cell.className += ' mine';
 
+      // For the operator, a day in the calendar is the way into that day —
+      // clicking it beats typing the date they are already looking at.
+      if (DATA.operator) {
+        cell.className += ' ops-click';
+        cell.title = 'Open ' + d.date + ' in operator mode';
+        cell.onclick = function () { openOperatorDay(d.date); };
+      }
+
       grid.appendChild(cell);
     });
 
@@ -251,6 +331,57 @@
   document.getElementById('scoringNote').textContent =
     'Points = base for the post x the day multiplier. Multipliers never compound — ' +
     'when a day is both a Sunday and a public holiday, the higher multiplier applies on its own.';
+
+  // The forecast is only honest with its horizon printed beside it, and there is
+  // nothing to forecast from until the roster runs past today.
+  if (DATA.horizon) {
+    document.getElementById('projectedNote').textContent =
+      'Where your balance lands if the roster is worked as it stands, out to ' +
+      DATA.horizon + '.';
+    document.getElementById('forecastNote').textContent =
+      'Projected is a forecast, not a promise. It reads the roster as it stands today, ' +
+      'and a swap you arrange between yourselves is not in it.';
+  } else {
+    var terms = document.querySelectorAll('dl.cols dt');
+    for (var t = 0; t < terms.length; t++) {
+      if (terms[t].textContent === 'Rostered' || terms[t].textContent === 'Projected') {
+        terms[t].style.display = 'none';
+        terms[t].nextElementSibling.style.display = 'none';
+      }
+    }
+  }
+
+  // --- operator mode -------------------------------------------------------
+  // Everything below is inert unless the server decided this reader is the
+  // operator. DATA.operator is the only switch, and the server sets it from the
+  // signed-in account, never from anything the page said.
+
+  function setMode(mode) {
+    document.getElementById('viewerMode').hidden = mode !== 'viewer';
+    document.getElementById('operatorMode').hidden = mode !== 'operator';
+    var buttons = document.getElementById('modes').getElementsByTagName('button');
+    for (var i = 0; i < buttons.length; i++) {
+      buttons[i].className = buttons[i].getAttribute('data-mode') === mode ? 'on' : '';
+    }
+  }
+
+  function openOperatorDay(iso) {
+    setMode('operator');
+    if (window.PsychocoOps) PsychocoOps.openDay(iso);
+    window.scrollTo(0, 0);
+  }
+
+  if (DATA.operator && window.PsychocoOps) {
+    var modes = document.getElementById('modes');
+    modes.className = 'modes on';
+    var modeButtons = modes.getElementsByTagName('button');
+    for (var m = 0; m < modeButtons.length; m++) {
+      modeButtons[m].onclick = (function (button) {
+        return function () { setMode(button.getAttribute('data-mode')); };
+      })(modeButtons[m]);
+    }
+    PsychocoOps.init(DATA);
+  }
 </script>
 </body>
 </html>

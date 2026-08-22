@@ -241,7 +241,12 @@ function recordDropout() {
       })),
       period: model.period
     }, date, vacantPost);
-    shortlist = explained.eligible.slice(0, 8);
+    // Not the person who just dropped out. Their absence is only written when
+    // the day is settled, so until then nothing in the constraint model rules
+    // them out and they would otherwise be offered the post they just left.
+    shortlist = explained.eligible.filter(function (c) {
+      return c.name !== dropper;
+    }).slice(0, 8);
   } catch (e) {
     shortlist = [];
   }

@@ -266,6 +266,31 @@ Every `WorkedDuty` records the `ScoringConfig` version it was priced under. So:
   recalculation** — the operator is shown what will move before it moves, and the
   recalculation is an audited event.
 
+### 3.2.1 Projecting the roster forward
+
+README §3.2 wants the board to show where the current roster lands everyone, not
+only what the ledger has credited. `projectedDuties()` in `20_fairness.gs` is the
+whole of it: it returns every rostered post the ledger has not credited, priced
+under the current config, plus the last date they run to.
+
+Two details carry the correctness:
+
+- **Uncredited is matched on date and post, never on name.** A day settled as a
+  drop-out is credited even though the Roster tab still names whoever was
+  originally down for it. Matching on the name would double-count the chain and
+  miss the person who actually worked (§2.1).
+- **The projection is `computeBalances()` again, not arithmetic on top of a
+  balance.** It runs over the ledger plus the outstanding duties, out to the
+  horizon rather than to today, so each person's availability covers the same
+  window as the points being shared. Adding planned points to a balance computed
+  to today would measure someone's points against a share of a period they had
+  not been measured across, and the error grows with the length of the roster.
+
+The forecast is computed in `buildBoardData()` and shipped to everyone; the
+operator's pool panel asks for the same figures through `opsStanding`. Where the
+roster does not run past today, the horizon is empty and the board hides both
+columns rather than showing a projection equal to the present.
+
 ### 3.3 Deriving the ledger
 
 `balance` per README §3.2 is a pure function of the `WorkedDuty` rows, the
@@ -505,6 +530,12 @@ chain: a month picker, a list of people to select from, and for generation a
 preview of the resulting balance spread before anything is committed. Roughly a
 few hundred lines, no new dependencies, and it removes almost all of the typing.
 
+Partly answered: the three actions an operator does most — settling a drop-out,
+reassigning a post, recording a stretch away — now have a designed home in
+operator mode on the board (§7.2), which is where the typing hurt most. What is
+still a prompt chain is generation and publishing, and for those the sidebar
+above is still the answer.
+
 ### 7.2 Overriding an assignment from the board
 
 Today an override means typing over a cell on the Roster tab, which bypasses
@@ -524,14 +555,40 @@ the owner's permissions*, and the email allowlist becomes the only thing between
 a colleague and the ledger. Today that risk is exactly zero, because `doGet` is
 the only entry point and nothing writes. Giving that up needs:
 
-- the writable path confined to `showBoard()`, the menu dialog only the operator
-  can open, with `doGet()` hardcoding read-only;
 - every server-side mutation verifying the caller itself, never trusting a flag
   that arrived from the client;
 - an audit entry for every write, as everywhere else.
 
 Same reasoning applies to recording a drop-out or an absence by clicking a day,
 which are the obvious follow-ons.
+
+**Decided: operator mode is a mode of the board, not a second application.** An
+earlier draft of this section wanted the writable path confined to `showBoard()`,
+the dialog only the operator can open, with `doGet()` hardcoded read-only. That
+is the safer construction and it fails the case the feature exists for: a
+drop-out is settled at seven in the morning from a phone (README §5.3), and
+requiring the workbook to be open on a laptop means it gets settled from memory
+hours later instead. So the operator gets a mode switch on the board they already
+read, and the identity check carries the weight the entry point used to:
+
+- the gate is `Session.getActiveUser()` against `Period.operator`, checked
+  server-side inside **every** callable, not once at page load;
+- it **fails closed**. No identity, no operator mode — an empty email is a
+  refusal, never a fallback, which is the opposite of how `checkViewer()` treats
+  an empty allowlist;
+- the operator layer is only substituted into the page for the operator, so the
+  group is not served the markup either. That is hygiene, not the control: the
+  control is the check inside the callable.
+
+**State: the interface is designed and its server side is not written.** The
+panel is `apps-script/operator.html` — the day with its chain shift and ranked
+shortlist, the pool with the drop-out record behind a per-person call, and time
+away with the two-week rule (README §3.1.1) derived rather than asked. It is
+previewable against real numbers with `node scripts/preview-operator-board.mjs`,
+which loads the pure modules into the page in place of `google.script.run`; that
+stub is the contract the server functions have to match. Until they exist,
+`80_webapp.gs` substitutes an empty operator layer for every reader, so nothing
+is reachable and nothing writes.
 
 ### 7.3 Validation on edit
 

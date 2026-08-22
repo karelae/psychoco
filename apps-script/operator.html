@@ -1,0 +1,1076 @@
+<!--
+  The operator's layer of the board.
+
+  README §7.1 gives the operator no private view of the numbers — they read the
+  same standing everyone reads. What they have that nobody else does is the
+  ability to change things, and the drop-out record. So this is not a separate
+  application: it is a second mode on the same page, included into board.html
+  and hidden unless the server put an `operator` block in the payload.
+
+  Everything sensitive arrives through Ops.call(), never in the page the group
+  is served. The markup below ships to every viewer; the data behind it does
+  not, and the server re-checks who is calling on every single request
+  (TECHNICAL-README §7.2). A hidden panel is not access control.
+
+  Server functions this expects — the reads are harmless, the three writes at
+  the end are the ones that must verify the caller before touching anything:
+
+    opsDay         {date}                             -> the day as rostered
+    opsCascade     {date, dropper}                    -> chain shift + shortlist
+    opsShortlist   {date, post}                       -> shortlist for one post
+    opsPerson      {name}                             -> standing, drops, leave
+    opsAwayPreview {kind, name, from, to, fraction}   -> effect before writing
+    opsSettleDay   {date, dropper, backfill}          -> ledger + escalation
+    opsReassign    {date, post, name, reason}         -> the roster row
+    opsRecordAway  {kind, name, from, to, type, fraction}
+-->
+<style>
+  /* Operator mode borrows the board's tokens and adds one accent of its own. It
+     must never be mistakable for the read-only board — everything here writes. */
+  :root {
+    --ops: #8a5000; --ops-bg: #fff7ea; --ops-line: #e7d3b1; --ops-soft: #fdf1dd;
+    --danger: #8a2f2f; --ok: #0b6b3a;
+  }
+  .ops-banner {
+    display: flex; flex-wrap: wrap; gap: .35rem .75rem; align-items: baseline;
+    border: 1px solid var(--ops-line); border-left: 4px solid var(--ops);
+    background: var(--ops-bg); border-radius: 4px;
+    padding: .6rem .8rem; margin: 1rem 0 0; font-size: .85rem;
+  }
+  .ops-banner b { color: var(--ops); }
+  .ops-banner .who { color: var(--muted); }
+
+  .ops-card {
+    border: 1px solid var(--line); border-radius: 6px; background: var(--bg);
+    padding: .9rem 1rem 1.1rem; margin-top: 1.1rem;
+  }
+  .ops-card > h3 {
+    font-size: .82rem; text-transform: uppercase; letter-spacing: .06em;
+    color: var(--muted); font-weight: 600; margin: 0;
+  }
+  .ops-head { display: flex; flex-wrap: wrap; gap: .5rem 1rem;
+              align-items: baseline; justify-content: space-between; }
+  .ops-actions { display: flex; flex-wrap: wrap; gap: .4rem; align-items: center; }
+  .ops-sub { color: var(--muted); font-size: .82rem; margin: .35rem 0 .8rem; }
+
+  /* Tap targets sized for a phone: a drop-out is settled at seven in the
+     morning, not at a desk (README §5.3). */
+  .btn {
+    font: inherit; font-size: .85rem; min-height: 2.2rem; padding: .3rem .7rem;
+    border: 1px solid var(--line); border-radius: 4px; background: var(--panel);
+    color: var(--fg); cursor: pointer;
+  }
+  .btn:hover { border-color: var(--ops); }
+  .btn.primary { background: var(--ops); border-color: var(--ops); color: var(--bg); font-weight: 600; }
+  .btn.quiet { background: transparent; color: var(--muted); }
+  .btn.on { background: var(--ops-soft); border-color: var(--ops); color: var(--ops); font-weight: 600; }
+  .btn[disabled] { opacity: .45; cursor: default; }
+  input[type=date], input[type=search], input[type=text], input[type=number], select {
+    font: inherit; font-size: .85rem; min-height: 2.2rem; padding: .25rem .45rem;
+    border: 1px solid var(--line); border-radius: 4px;
+    background: var(--bg); color: var(--fg);
+  }
+  .check { font-size: .82rem; color: var(--muted); display: inline-flex; gap: .3rem; align-items: center; }
+
+  .seg { display: inline-flex; margin: .1rem 0 .8rem; }
+  .seg .btn { border-radius: 0; margin-left: -1px; }
+  .seg .btn:first-child { border-radius: 4px 0 0 4px; margin-left: 0; }
+  .seg .btn:last-child { border-radius: 0 4px 4px 0; }
+
+  /* The day as rostered: one row per post, each with what it is worth. */
+  .slot {
+    display: grid; grid-template-columns: 2.6rem 1fr 3.2rem auto;
+    gap: .5rem; align-items: center;
+    padding: .45rem .1rem; border-top: 1px solid var(--line);
+  }
+  .slot:first-child { border-top: 0; }
+  .slot .post { color: var(--muted); font-size: .8rem; font-weight: 600; }
+  .slot .name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .slot .pts { font-variant-numeric: tabular-nums; color: var(--muted); font-size: .85rem; text-align: right; }
+  .slot .acts { display: flex; gap: .3rem; }
+  .slot.chosen { background: var(--ops-soft); }
+  .slot.chosen .name { text-decoration: line-through; color: var(--muted); }
+
+  /* The chain shift. The arrow is the point of the whole panel: the operator has
+     to see 2nd → 1st happen before committing to it (README §1.2). */
+  .chain { border: 1px solid var(--ops-line); border-radius: 4px;
+           background: var(--ops-soft); padding: .55rem .7rem; margin: .85rem 0 0; }
+  .chain h4 { font-size: .78rem; text-transform: uppercase; letter-spacing: .05em;
+              color: var(--ops); margin: 0 0 .35rem; }
+  .move { display: grid; grid-template-columns: 1fr auto; gap: .4rem; align-items: baseline;
+          padding: .32rem 0; font-size: .88rem; border-top: 1px solid var(--ops-line); }
+  .move:first-of-type { border-top: 0; }
+  .move .what b { font-weight: 600; }
+  .move .from { color: var(--muted); font-size: .8rem; }
+  .move .delta { font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .move .up { color: var(--ok); font-weight: 600; }
+  .move .zero { color: var(--danger); font-weight: 600; }
+
+  /* The shortlist, most owed first — the scheduler's own ranking, not a new one. */
+  .pick { display: flex; flex-wrap: wrap; gap: .35rem; margin: .5rem 0 0; }
+  .cand {
+    display: inline-flex; gap: .4rem; align-items: baseline;
+    border: 1px solid var(--line); border-radius: 999px;
+    padding: .3rem .7rem; font: inherit; font-size: .85rem; cursor: pointer;
+    background: var(--bg); color: var(--fg);
+  }
+  .cand .bal { color: var(--muted); font-variant-numeric: tabular-nums; font-size: .8rem; }
+  .cand.on { border-color: var(--ops); background: var(--ops-soft); font-weight: 600; }
+  .cand.on .bal { color: var(--ops); }
+  .cand.nobody { color: var(--danger); }
+  .pick-head { font-size: .85rem; margin: .8rem 0 0; }
+  .pick-head b { color: var(--ops); }
+  details.why { margin: .6rem 0 0; font-size: .82rem; }
+  details.why summary { color: var(--muted); cursor: pointer; }
+  details.why ul { margin: .4rem 0 0; padding-left: 1.1rem; color: var(--muted); }
+  details.why li { margin-bottom: .1rem; }
+
+  /* What is about to be written, itemised. Nothing commits from a screen that
+     has not said what it will change (README §7). */
+  .commit { margin: .9rem 0 0; padding: .6rem .7rem; border-radius: 4px;
+            border: 1px solid var(--line); background: var(--panel); font-size: .85rem; }
+  .commit h4 { font-size: .78rem; text-transform: uppercase; letter-spacing: .05em;
+               color: var(--muted); margin: 0 0 .3rem; }
+  .commit ul { margin: .3rem 0 .7rem; padding-left: 1.1rem; color: var(--muted); }
+  .commit .warn { color: var(--danger); font-weight: 600; }
+  .commit .row { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; }
+  .commit .reason { flex: 1 1 14rem; }
+
+  /* Forty names is a page and a half of scrolling before the next panel, and the
+     pool is a reference rather than the urgent thing on the screen. */
+  .pool-scroll { max-height: 26rem; overflow: auto; }
+  .pool-scroll thead th { position: sticky; top: 0; background: var(--bg); z-index: 1; }
+  .pool-row { cursor: pointer; }
+  /* A forecast should not shout as loudly as a number already earned. */
+  .pill.faint { background: none; opacity: .75; font-weight: 500; }
+  .pool-row td.chev { color: var(--muted); width: 1.4rem; }
+  .pool-row.open td { background: var(--ops-soft); }
+  .pool-row.open td.chev { color: var(--ops); }
+  .detail td { background: var(--panel); white-space: normal; }
+  .detail .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
+                  gap: .8rem 1.5rem; padding: .2rem 0 .4rem; }
+  .detail h5 { margin: 0 0 .3rem; font-size: .78rem; text-transform: uppercase;
+               letter-spacing: .04em; color: var(--muted); }
+  .detail ul { margin: 0; padding-left: 1.1rem; font-size: .85rem; }
+  .detail li { margin-bottom: .15rem; }
+  .detail .private { color: var(--danger); font-size: .78rem; margin: .45rem 0 0; }
+  .detail .linky { border: 0; background: none; padding: 0; min-height: 0;
+                   color: var(--accent); text-decoration: underline; font-size: .85rem; }
+
+  .fields { display: flex; flex-wrap: wrap; gap: .5rem .8rem; align-items: center; font-size: .85rem; }
+  .fields label { color: var(--muted); display: inline-flex; gap: .35rem; align-items: center; }
+  .effect { margin: .85rem 0 0; font-size: .87rem; }
+  .effect .verdict { font-weight: 600; }
+  .effect .verdict.recal { color: var(--ops); }
+  .effect .verdict.block { color: var(--muted); }
+  .effect table { margin-top: .45rem; }
+  .effect .clash { color: var(--danger); margin: .6rem 0 0; }
+  .effect .clash ul { margin: .2rem 0 0; padding-left: 1.1rem; font-weight: 400; }
+  /* A clashing post is a link to that day, not a control of its own. */
+  .effect .clash .btn { border: 0; background: none; padding: .1rem 0; min-height: 0;
+                        color: var(--accent); text-decoration: underline; }
+
+  .log { margin: .3rem 0 0; padding-left: 1.2rem; font-size: .85rem; }
+  .log li { margin-bottom: .25rem; }
+  .log .when { color: var(--muted); font-variant-numeric: tabular-nums; }
+  .ops-empty { color: var(--muted); font-size: .85rem; }
+  .ops-error { color: var(--danger); font-size: .85rem; margin: .5rem 0 0; }
+  .ops-done { color: var(--ok); font-size: .85rem; font-weight: 600; margin: .5rem 0 0; }
+
+  @media (max-width: 34rem) {
+    .slot { grid-template-columns: 2.4rem 1fr 3rem; }
+    .slot .acts { grid-column: 2 / -1; }
+    .ops-head { align-items: stretch; }
+  }
+</style>
+
+<div class="ops" id="opsPane">
+  <p class="ops-banner" id="opsBanner"></p>
+
+  <section class="ops-card">
+    <div class="ops-head">
+      <h3>The day</h3>
+      <div class="ops-actions">
+        <input type="date" id="dayDate" aria-label="Which day">
+        <button class="btn" id="dayToday" type="button">Today</button>
+      </div>
+    </div>
+    <p class="ops-sub" id="dayMeta"></p>
+    <div id="daySlots"></div>
+    <div id="dayFlow"></div>
+  </section>
+
+  <section class="ops-card">
+    <div class="ops-head">
+      <h3>The pool</h3>
+      <div class="ops-actions">
+        <input type="search" id="poolFilter" placeholder="Filter by name" aria-label="Filter by name">
+        <label class="check"><input type="checkbox" id="poolDropsOnly"> with drop-outs</label>
+      </div>
+    </div>
+    <p class="ops-sub">The standing everyone sees, and what the roster has coming on top of
+      it. Open a row for the part only you see.<br>
+      <span id="poolHorizon"></span></p>
+    <div class="scroll pool-scroll"><table id="poolTable"></table></div>
+  </section>
+
+  <section class="ops-card">
+    <h3>Time away</h3>
+    <p class="ops-sub">
+      For a real stretch away, or a change of hours. Not for a swapped weekend —
+      those stay between the two people.
+    </p>
+    <div class="seg" id="awayKind">
+      <button class="btn on" type="button" data-kind="absence">Away for a stretch</button>
+      <button class="btn" type="button" data-kind="fraction">Working fewer hours</button>
+    </div>
+    <div class="fields" id="awayFields"></div>
+    <div id="awayEffect"></div>
+  </section>
+
+  <section class="ops-card">
+    <h3>Written this session</h3>
+    <div id="opsLog"></div>
+  </section>
+</div>
+
+<script>
+/**
+ * The operator client. One IIFE, one global — board.html calls
+ * PsychocoOps.init(DATA) when the payload carries an `operator` block, and
+ * PsychocoOps.openDay(iso) when a calendar cell is clicked in operator mode.
+ *
+ * Nothing here decides anything. Every number on the screen was computed by the
+ * pure modules on the server, which is the only place that may price a duty or
+ * rank a shortlist — this file asks and renders.
+ */
+var PsychocoOps = (function () {
+  'use strict';
+
+  var state = {
+    board: null,        // the viewer payload, reused so nothing is fetched twice
+    pool: null,         // the standing with the roster projected on top of it
+    day: null,          // the day currently loaded
+    mode: null,         // null | 'dropout' | 'reassign'
+    cascade: null,
+    shortlist: null,
+    chosen: null,       // who takes the vacant or reassigned post
+    reassignPost: null,
+    away: { kind: 'absence' },
+    openPerson: null,
+    written: []
+  };
+
+  // -- plumbing -------------------------------------------------------------
+
+  /**
+   * The one call site for anything the server knows. In the Web App this is
+   * google.script.run; in the local preview it is a stub that runs the same
+   * pure modules in the page. Both go through here so the UI cannot tell the
+   * difference — and so there is exactly one place to look when it breaks.
+   */
+  function call(name, payload, onOk, onFail) {
+    var fail = onFail || function (err) { console.error(name, err); };
+    if (window.google && google.script && google.script.run) {
+      google.script.run.withSuccessHandler(onOk).withFailureHandler(fail)[name](payload);
+      return;
+    }
+    if (window.PSYCHOCO_OPS_STUB && window.PSYCHOCO_OPS_STUB[name]) {
+      window.setTimeout(function () {
+        try { onOk(window.PSYCHOCO_OPS_STUB[name](payload)); } catch (e) { fail(e); }
+      }, 0);
+      return;
+    }
+    fail(new Error('No operator backend is reachable. Reload the board.'));
+  }
+
+  function el(tag, text, cls) {
+    var n = document.createElement(tag);
+    if (text !== undefined && text !== null) n.textContent = text;
+    if (cls) n.className = cls;
+    return n;
+  }
+
+  function clear(node) {
+    while (node.firstChild) node.removeChild(node.firstChild);
+    return node;
+  }
+
+  function signed(n) {
+    var v = Math.round(n * 100) / 100;
+    return (v > 0 ? '+' : '') + v.toFixed(2);
+  }
+
+  function pts(n) {
+    return (Math.round(n * 100) / 100).toFixed(2);
+  }
+
+  function say(node, text, cls) {
+    clear(node).appendChild(el('p', text, cls || 'ops-empty'));
+  }
+
+  // -- the day --------------------------------------------------------------
+
+  function openDay(iso) {
+    document.getElementById('dayDate').value = iso;
+    loadDay(iso);
+  }
+
+  function loadDay(iso) {
+    state.mode = null;
+    state.cascade = null;
+    state.chosen = null;
+    clear(document.getElementById('dayFlow'));
+    say(document.getElementById('daySlots'), 'Reading ' + iso + '…');
+
+    call('opsDay', { date: iso }, function (day) {
+      state.day = day;
+      renderDay();
+    }, function (err) {
+      say(document.getElementById('daySlots'), String(err && err.message || err), 'ops-error');
+    });
+  }
+
+  function renderDay() {
+    var day = state.day;
+    var meta = document.getElementById('dayMeta');
+    var slots = clear(document.getElementById('daySlots'));
+
+    meta.textContent = day.weekday + ' ' + day.date + ' · ' + day.dayKind +
+      ' · × ' + day.multiplier + ' · priced under config v' + day.configVersion +
+      (day.settled ? ' · already settled in the ledger' : '');
+
+    if (!day.posts.length) {
+      slots.appendChild(el('p', 'Nothing is rostered on ' + day.date + '.', 'ops-empty'));
+      return;
+    }
+
+    day.posts.forEach(function (p) {
+      var line = el('div', null, 'slot');
+      line.appendChild(el('span', p.post, 'post'));
+      line.appendChild(el('span', p.name || '—', 'name'));
+      line.appendChild(el('span', pts(p.points), 'pts'));
+
+      var acts = el('span', null, 'acts');
+      var drop = el('button', 'dropped out', 'btn');
+      drop.type = 'button';
+      drop.onclick = function () { startDropout(p.name); };
+      var swap = el('button', 'reassign', 'btn quiet');
+      swap.type = 'button';
+      swap.onclick = function () { startReassign(p.post); };
+      if (p.name) acts.appendChild(drop);
+      acts.appendChild(swap);
+      line.appendChild(acts);
+
+      if (state.mode === 'dropout' && state.cascade && p.name === state.cascade.dropper) {
+        line.className += ' chosen';
+      }
+      slots.appendChild(line);
+    });
+  }
+
+  /**
+   * A drop-out. The chain shift and the pricing are the server's; this only has
+   * to make them visible before the operator commits (README §5.3).
+   */
+  function startDropout(name) {
+    state.mode = 'dropout';
+    state.chosen = null;
+    say(document.getElementById('dayFlow'), 'Working out the chain shift…');
+
+    call('opsCascade', { date: state.day.date, dropper: name }, function (cascade) {
+      state.cascade = cascade;
+      renderDay();
+      renderCascade();
+    }, function (err) {
+      say(document.getElementById('dayFlow'), String(err && err.message || err), 'ops-error');
+    });
+  }
+
+  function renderCascade() {
+    var c = state.cascade;
+    var flow = clear(document.getElementById('dayFlow'));
+
+    var chain = el('div', null, 'chain');
+    chain.appendChild(el('h4', c.dropper + ' dropped out of ' + c.droppedPost));
+
+    var gone = el('div', null, 'move');
+    var goneWhat = el('div', null, 'what');
+    goneWhat.appendChild(el('b', c.dropper));
+    goneWhat.appendChild(el('span', ' — worked nothing'));
+    goneWhat.appendChild(el('div', 'was rostered ' + c.droppedPost +
+      ', worth ' + pts(c.forgone), 'from'));
+    gone.appendChild(goneWhat);
+    var goneDelta = el('div', null, 'delta');
+    goneDelta.appendChild(el('span', '0.00', 'zero'));
+    gone.appendChild(goneDelta);
+    chain.appendChild(gone);
+
+    c.moves.forEach(function (m) {
+      var move = el('div', null, 'move');
+      var what = el('div', null, 'what');
+      what.appendChild(el('b', m.name));
+      what.appendChild(el('span', ' — works ' + m.post));
+      what.appendChild(el('div', 'up from ' + m.from + ' · was worth ' + pts(m.was), 'from'));
+      move.appendChild(what);
+      var delta = el('div', null, 'delta');
+      delta.appendChild(el('span', pts(m.points) + ' ', ''));
+      delta.appendChild(el('span', signed(m.points - m.was), 'up'));
+      move.appendChild(delta);
+      chain.appendChild(move);
+    });
+    flow.appendChild(chain);
+
+    var head = el('p', null, 'pick-head');
+    head.appendChild(el('span', 'Who came in at '));
+    head.appendChild(el('b', c.vacantPost));
+    head.appendChild(el('span', '? Most owed and clear to take it, ' + pts(c.vacantPoints) + ' points:'));
+    flow.appendChild(head);
+
+    flow.appendChild(candidates(c.shortlist, c.blocked, true));
+    flow.appendChild(commitDropout());
+  }
+
+  /**
+   * The shortlist. Balances are shown because "why them?" is the first question
+   * anyone asks, and the ruled-out list is one click away for the same reason
+   * (README §5.2).
+   */
+  function candidates(shortlist, blocked, allowNobody) {
+    var wrap = el('div');
+    var pick = el('div', null, 'pick');
+
+    if (!shortlist.length) {
+      pick.appendChild(el('span', 'Nobody is both available and clear — check the absences.', 'ops-error'));
+    }
+
+    shortlist.forEach(function (cand) {
+      var chip = el('button', null, 'cand' + (state.chosen === cand.name ? ' on' : ''));
+      chip.type = 'button';
+      chip.appendChild(el('span', cand.name));
+      chip.appendChild(el('span', signed(cand.balance), 'bal'));
+      chip.onclick = function () {
+        state.chosen = state.chosen === cand.name ? null : cand.name;
+        redrawFlow();
+      };
+      pick.appendChild(chip);
+    });
+
+    if (allowNobody) {
+      var none = el('button', null, 'cand nobody' + (state.chosen === '' ? ' on' : ''));
+      none.type = 'button';
+      none.appendChild(el('span', 'nobody covered it'));
+      none.onclick = function () {
+        state.chosen = state.chosen === '' ? null : '';
+        redrawFlow();
+      };
+      pick.appendChild(none);
+    }
+    wrap.appendChild(pick);
+
+    if (blocked && blocked.length) {
+      var why = el('details', null, 'why');
+      why.appendChild(el('summary', blocked.length + ' ruled out — why'));
+      var list = el('ul');
+      blocked.forEach(function (b) { list.appendChild(el('li', b.name + ' — ' + b.reason)); });
+      why.appendChild(list);
+      wrap.appendChild(why);
+    }
+    return wrap;
+  }
+
+  function redrawFlow() {
+    if (state.mode === 'dropout') renderCascade();
+    else if (state.mode === 'reassign') renderReassign();
+  }
+
+  function commitDropout() {
+    var c = state.cascade;
+    var box = el('div', null, 'commit');
+    box.appendChild(el('h4', 'What gets written'));
+
+    var creditedH = c.moves.reduce(function (sum, m) { return sum + m.points; }, 0);
+    var list = el('ul');
+    var rows = c.moves.length + (state.chosen ? 1 : 0);
+    var credited = creditedH + (state.chosen ? c.vacantPoints : 0);
+    list.appendChild(el('li', rows + ' ledger rows, ' + pts(credited) +
+      ' points, priced under config v' + state.day.configVersion));
+    list.appendChild(el('li', 'one escalation row naming ' + c.dropper + ' and the chain'));
+    list.appendChild(el('li', 'a one-day absence for ' + c.dropper +
+      ' — it keeps them off the roster for the day and leaves what they are ' +
+      'expected to carry untouched, so the missed points are the whole correction'));
+    list.appendChild(el('li', 'one audit line'));
+    box.appendChild(list);
+
+    if (state.chosen === '') {
+      box.appendChild(el('p', c.vacantPost + ' will be recorded as uncovered.', 'warn'));
+    }
+
+    var row = el('div', null, 'row');
+    var go = el('button', 'Settle ' + c.date, 'btn primary');
+    go.type = 'button';
+    go.disabled = state.chosen === null;
+    go.onclick = function () { settle(go); };
+    row.appendChild(go);
+    if (state.chosen === null) {
+      row.appendChild(el('span', 'Pick who came in at ' + c.vacantPost + ' first.', 'ops-empty'));
+    }
+    var cancel = el('button', 'Cancel', 'btn quiet');
+    cancel.type = 'button';
+    cancel.onclick = function () { loadDay(state.day.date); };
+    row.appendChild(cancel);
+    box.appendChild(row);
+    return box;
+  }
+
+  function settle(button) {
+    button.disabled = true;
+    button.textContent = 'Settling…';
+    call('opsSettleDay', {
+      date: state.day.date,
+      dropper: state.cascade.dropper,
+      backfill: state.chosen
+    }, function (res) {
+      logWrite(res.summary);
+      loadDay(state.day.date);
+      refreshPool();
+    }, function (err) {
+      button.disabled = false;
+      button.textContent = 'Settle ' + state.day.date;
+      document.getElementById('dayFlow').appendChild(
+        el('p', String(err && err.message || err), 'ops-error'));
+    });
+  }
+
+  /**
+   * An override. Same shortlist, same reasons — the difference is that this
+   * writes the plan rather than the record, and README §5.2 wants a reason
+   * against it.
+   */
+  function startReassign(post) {
+    state.mode = 'reassign';
+    state.reassignPost = post;
+    state.chosen = null;
+    state.cascade = null;
+    renderDay();
+    say(document.getElementById('dayFlow'), 'Ranking who could take ' + post + '…');
+
+    call('opsShortlist', { date: state.day.date, post: post }, function (list) {
+      state.shortlist = list;
+      renderReassign();
+    }, function (err) {
+      say(document.getElementById('dayFlow'), String(err && err.message || err), 'ops-error');
+    });
+  }
+
+  function renderReassign() {
+    var s = state.shortlist;
+    var flow = clear(document.getElementById('dayFlow'));
+
+    var head = el('p', null, 'pick-head');
+    head.appendChild(el('span', 'Reassign '));
+    head.appendChild(el('b', s.post + ' on ' + s.date));
+    head.appendChild(el('span', ' — ' + s.price + '. Rostered: ' + (s.current || 'nobody') + '.'));
+    flow.appendChild(head);
+    flow.appendChild(candidates(s.shortlist, s.blocked, false));
+
+    var box = el('div', null, 'commit');
+    box.appendChild(el('h4', 'What gets written'));
+    var list = el('ul');
+    list.appendChild(el('li', 'one roster row — the plan, not the ledger, so nothing is credited yet'));
+    list.appendChild(el('li', 'the reason you give, kept against the row and in the audit'));
+    box.appendChild(list);
+
+    if (s.settled) {
+      box.appendChild(el('p', s.date + ' is already in the ledger. Changing the plan now ' +
+        'will not move any points — settle it as a drop-out instead.', 'warn'));
+    }
+
+    var row = el('div', null, 'row');
+    var reason = el('input', null, 'reason');
+    reason.type = 'text';
+    reason.placeholder = 'Why — e.g. swapped with Nora, agreed 12 Jan';
+    row.appendChild(reason);
+    var go = el('button', 'Reassign', 'btn primary');
+    go.type = 'button';
+    go.disabled = true;
+    go.onclick = function () {
+      go.disabled = true;
+      go.textContent = 'Writing…';
+      call('opsReassign', {
+        date: s.date, post: s.post, name: state.chosen, reason: reason.value.trim()
+      }, function (res) {
+        logWrite(res.summary);
+        loadDay(s.date);
+      }, function (err) {
+        go.disabled = false;
+        go.textContent = 'Reassign';
+        flow.appendChild(el('p', String(err && err.message || err), 'ops-error'));
+      });
+    };
+    function gate() { go.disabled = !state.chosen || reason.value.trim().length < 3; }
+    reason.oninput = gate;
+    gate();
+    row.appendChild(go);
+    var cancel = el('button', 'Cancel', 'btn quiet');
+    cancel.type = 'button';
+    cancel.onclick = function () { loadDay(s.date); };
+    row.appendChild(cancel);
+    box.appendChild(row);
+    flow.appendChild(box);
+  }
+
+  // -- the pool -------------------------------------------------------------
+
+  /**
+   * The standing table the group sees, with one thing added: a row opens to show
+   * that person's drop-out record. README §7.1 is explicit that this is the
+   * operator's alone and never a board feature, so it is fetched per person
+   * rather than shipped with the page.
+   */
+  function renderPool() {
+    var table = clear(document.getElementById('poolTable'));
+    if (!state.pool) {
+      document.getElementById('poolHorizon').textContent = 'Reading the pool…';
+      return;
+    }
+    var filter = document.getElementById('poolFilter').value.trim().toLowerCase();
+    var dropsOnly = document.getElementById('poolDropsOnly').checked;
+
+    var head = table.createTHead();
+    var hr = document.createElement('tr');
+    ['', 'Name', 'Drop-outs', 'Carried', 'Balance', 'Rostered', 'Projected']
+      .forEach(function (h, i) {
+      hr.appendChild(el('th', h, i > 1 ? 'num' : ''));
+    });
+    head.appendChild(hr);
+
+    var body = table.createTBody();
+    var shown = 0;
+
+    state.pool.rows.forEach(function (r) {
+      var drops = state.pool.dropoutsByName[r.name] || 0;
+      if (filter && r.name.toLowerCase().indexOf(filter) < 0) return;
+      if (dropsOnly && !drops) return;
+      shown++;
+
+      var tr = document.createElement('tr');
+      tr.className = 'pool-row' + (state.openPerson === r.name ? ' open' : '');
+      tr.appendChild(el('td', state.openPerson === r.name ? '▾' : '▸', 'chev'));
+      tr.appendChild(el('td', r.name));
+      tr.appendChild(el('td', drops || '—', 'num'));
+      tr.appendChild(el('td', pts(r.points), 'num'));
+      // The same pill the group sees, for the same reason: the operator reading
+      // this table is reading their own standing in it too.
+      tr.appendChild(pillCell(r.balance));
+
+      // What is already on the roster and not yet credited, and where that
+      // lands them. The carried column answers "has this been fair so far";
+      // these two answer "is it about to be", which is the question an operator
+      // is actually being asked when somebody complains.
+      tr.appendChild(el('td', r.rosteredPoints ? pts(r.rosteredPoints) : '—', 'num'));
+      tr.appendChild(pillCell(r.projectedBalance, 'faint'));
+
+      tr.onclick = function () {
+        state.openPerson = state.openPerson === r.name ? null : r.name;
+        renderPool();
+      };
+      body.appendChild(tr);
+
+      if (state.openPerson === r.name) {
+        var detail = document.createElement('tr');
+        detail.className = 'detail';
+        var cell = document.createElement('td');
+        cell.colSpan = 7;
+        cell.appendChild(el('p', 'Reading ' + r.name + '…', 'ops-empty'));
+        detail.appendChild(cell);
+        body.appendChild(detail);
+        call('opsPerson', { name: r.name }, function (person) {
+          if (state.openPerson !== r.name) return;
+          renderPerson(cell, person);
+        }, function (err) {
+          say(cell, String(err && err.message || err), 'ops-error');
+        });
+      }
+    });
+
+    if (!shown) {
+      body.appendChild(row(el('td', 'Nobody matches.', 'ops-empty')));
+    }
+
+    function row(cell) {
+      var tr = document.createElement('tr');
+      cell.colSpan = 7;
+      tr.appendChild(cell);
+      return tr;
+    }
+
+    document.getElementById('poolHorizon').textContent = state.pool.horizon
+      ? 'Rostered and Projected look ahead to ' + state.pool.horizon +
+        ', the last day anybody is rostered for.'
+      : 'Nothing is rostered beyond what the ledger already holds.';
+  }
+
+  /**
+   * A balance as the group sees it. The projected one is drawn back a little:
+   * it is a forecast of a roster that can still change, and it should not read
+   * as loudly as a number somebody has already earned.
+   */
+  function pillCell(balance, extra) {
+    var pill = el('span', signed(balance), 'pill ' + (balance < 0 ? 'owed' : 'over') +
+      (extra ? ' ' + extra : ''));
+    var cell = el('td', null, 'num');
+    cell.appendChild(pill);
+    return cell;
+  }
+
+  function renderPerson(cell, person) {
+    clear(cell);
+    var grid = el('div', null, 'grid');
+
+    var drops = el('div');
+    drops.appendChild(el('h5', 'Drop-outs — ' + (person.dropouts.length || 'none')));
+    if (!person.dropouts.length) {
+      drops.appendChild(el('p', 'Never dropped out this period.', 'ops-empty'));
+    } else {
+      var dl = el('ul');
+      person.dropouts.forEach(function (d) {
+        dl.appendChild(el('li', d.date + ' — dropped ' + d.post + ' (' + d.dayKind + '), ' +
+          'gave up ' + pts(d.forgone) + ' points; ' + d.covered));
+      });
+      drops.appendChild(dl);
+      drops.appendChild(el('p', pts(person.forgoneTotal) + ' points not earned this way. ' +
+        'The ledger has already handled the fairness of that — this is here for a ' +
+        'conversation, not a penalty.', 'ops-empty'));
+    }
+    grid.appendChild(drops);
+
+    var away = el('div');
+    away.appendChild(el('h5', 'Recorded away — ' + person.awayDays + ' days'));
+    if (!person.absences.length && !person.fractions.length) {
+      away.appendChild(el('p', 'Nothing recorded.', 'ops-empty'));
+    }
+    if (person.absences.length) {
+      var al = el('ul');
+      person.absences.forEach(function (a) {
+        al.appendChild(el('li', a.from + ' → ' + a.to + ' · ' + a.days + ' days · ' + a.type +
+          (a.reduces ? ' · lowers their expected share' : ' · blocks rostering only')));
+      });
+      away.appendChild(al);
+    }
+    if (person.fractions.length) {
+      var fl = el('ul');
+      person.fractions.forEach(function (f) {
+        fl.appendChild(el('li', f.from + ' → ' + f.to + ' · ' + f.fraction + '% of full time'));
+      });
+      away.appendChild(fl);
+    }
+    away.appendChild(el('p', 'Only you see this. The board shows a day count and nothing else.',
+      'private'));
+    grid.appendChild(away);
+
+    var ahead = el('div');
+    ahead.appendChild(el('h5', 'Rostered ahead — ' + pts(person.plannedTotal) + ' points'));
+    if (!person.upcoming.length) {
+      ahead.appendChild(el('p', 'Nothing on the roster that the ledger has not already ' +
+        'credited.', 'ops-empty'));
+    } else {
+      var ul = el('ul');
+      person.upcoming.forEach(function (u) {
+        var li = el('li');
+        var link = el('button', u.date + ' · ' + u.post + ' · ' + u.dayKind +
+          ' · ' + pts(u.points), 'btn quiet linky');
+        link.type = 'button';
+        link.onclick = function (event) { event.stopPropagation(); openDay(u.date); };
+        li.appendChild(link);
+        ul.appendChild(li);
+      });
+      ahead.appendChild(ul);
+    }
+    grid.appendChild(ahead);
+
+    cell.appendChild(grid);
+  }
+
+  /**
+   * Re-read the standing after a write, here and on the viewer's half of the
+   * page. Both, always: the operator switching tabs to check what their own
+   * change did is the most likely next thing they do.
+   */
+  function refreshPool() {
+    call('opsStanding', {}, function (fresh) {
+      state.pool = fresh;
+      state.board.rows = fresh.rows;
+      state.board.totalPoints = fresh.totalPoints;
+      state.board.targetRate = fresh.targetRate;
+      renderPool();
+      // The group's half of the page gets the earned figures only. What is
+      // merely rostered is not a standing, and putting a forecast on the board
+      // everyone reads is a decision for the group, not a side effect of this.
+      if (window.PsychocoBoard) PsychocoBoard.renderStanding(fresh.rows, fresh);
+    }, function (err) {
+      document.getElementById('poolHorizon').textContent =
+        String(err && err.message || err);
+    });
+  }
+
+  // -- time away ------------------------------------------------------------
+
+  /**
+   * Two different records behind one panel, because an operator asked to log
+   * "she is going part time" will otherwise reach for the absence form. A
+   * stretch away is an Absence; a change of hours is a Workload span, which is
+   * not retroactive and does not pretend the person was ever absent.
+   */
+  function renderAwayFields() {
+    var fields = clear(document.getElementById('awayFields'));
+    var kind = state.away.kind;
+
+    var who = el('select');
+    who.appendChild(el('option', 'Who…', ''));
+    state.board.rows.slice().sort(function (a, b) {
+      return a.name < b.name ? -1 : 1;
+    }).forEach(function (r) {
+      var opt = el('option', r.name);
+      opt.value = r.name;
+      who.appendChild(opt);
+    });
+    who.value = state.away.name || '';
+    fields.appendChild(label('Person', who));
+
+    var from = el('input');
+    from.type = 'date';
+    from.value = state.away.from || state.board.today;
+    fields.appendChild(label('From', from));
+
+    var to = el('input');
+    to.type = 'date';
+    to.value = state.away.to || state.board.period.end;
+    fields.appendChild(label(kind === 'absence' ? 'To' : 'Until', to));
+
+    var extra;
+    if (kind === 'absence') {
+      extra = el('select');
+      ['sickness', 'parental leave', 'extended leave', 'secondment', 'other'].forEach(function (t) {
+        var opt = el('option', t);
+        opt.value = t;
+        extra.appendChild(opt);
+      });
+      extra.value = state.away.type || 'sickness';
+      fields.appendChild(label('Reason category', extra));
+    } else {
+      extra = el('input');
+      extra.type = 'number';
+      extra.min = '10';
+      extra.max = '100';
+      extra.step = '5';
+      extra.style.width = '5rem';
+      extra.value = state.away.fraction || 80;
+      fields.appendChild(label('% of full time', extra));
+    }
+
+    function collect() {
+      state.away = {
+        kind: kind,
+        name: who.value,
+        from: from.value,
+        to: to.value,
+        type: kind === 'absence' ? extra.value : null,
+        fraction: kind === 'fraction' ? Number(extra.value) : null
+      };
+      previewAway();
+    }
+    [who, from, to, extra].forEach(function (input) { input.onchange = collect; });
+
+    if (state.away.name) previewAway();
+    else say(document.getElementById('awayEffect'),
+      'Pick a person and the dates. Nothing is written until you have seen what it changes.');
+
+    function label(text, input) {
+      var wrap = el('label', text + ' ');
+      wrap.appendChild(input);
+      return wrap;
+    }
+  }
+
+  function previewAway() {
+    var a = state.away;
+    if (!a.name || !a.from || !a.to) return;
+    var target = document.getElementById('awayEffect');
+    say(target, 'Working out what it changes…');
+
+    call('opsAwayPreview', a, function (effect) {
+      renderAwayEffect(effect);
+    }, function (err) {
+      say(target, String(err && err.message || err), 'ops-error');
+    });
+  }
+
+  /**
+   * The whole point of this panel. Nobody should have to know the two-week rule
+   * (README §3.1.1) to use it correctly — the screen states which side of the
+   * threshold the dates fall on, and what it does to the person's expected
+   * share, before anything is written.
+   *
+   * The rows are whatever the server sends. Which measures are worth comparing
+   * is a fairness question, not a rendering one, so it is answered there.
+   */
+  function renderAwayEffect(effect) {
+    var box = clear(document.getElementById('awayEffect'));
+    box.className = 'effect';
+
+    if (effect.error) {
+      box.appendChild(el('p', effect.error, 'ops-error'));
+      return;
+    }
+
+    var verdict = el('p');
+    if (effect.kind === 'absence') {
+      verdict.appendChild(el('span', effect.days + ' days. '));
+      if (effect.recalibrates) {
+        verdict.appendChild(el('span', 'At or over the ' + effect.threshold +
+          '-day threshold, so it lowers what they are expected to carry.', 'verdict recal'));
+      } else {
+        verdict.appendChild(el('span', 'Under the ' + effect.threshold +
+          '-day threshold, so it only keeps them off the roster — their expected share ' +
+          'is unchanged and they will not have to catch up.', 'verdict block'));
+      }
+    } else {
+      verdict.appendChild(el('span', 'From ' + effect.from + ' they count as ' +
+        effect.fraction + '% available. '));
+      verdict.appendChild(el('span', 'Days before that date keep the fraction they ' +
+        'actually had — this is not retroactive.', 'verdict recal'));
+    }
+    box.appendChild(verdict);
+
+    var table = document.createElement('table');
+    var head = table.createTHead();
+    var hr = document.createElement('tr');
+    ['', 'Now', 'After', 'Change'].forEach(function (h, i) {
+      hr.appendChild(el('th', h, i ? 'num' : ''));
+    });
+    head.appendChild(hr);
+    var body = table.createTBody();
+    effect.rows.forEach(function (r) {
+      var digits = r.digits === undefined ? 2 : r.digits;
+      var unit = r.unit || '';
+      var tr = document.createElement('tr');
+      tr.appendChild(el('td', r.label));
+      tr.appendChild(el('td', r.before.toFixed(digits) + unit, 'num'));
+      tr.appendChild(el('td', r.after.toFixed(digits) + unit, 'num'));
+      var change = Math.round((r.after - r.before) * 100) / 100;
+      tr.appendChild(el('td', (change > 0 ? '+' : '') + change.toFixed(digits) + unit, 'num'));
+      body.appendChild(tr);
+    });
+    box.appendChild(table);
+
+    if (effect.note) box.appendChild(el('p', effect.note, 'ops-empty'));
+
+    if (effect.clashes && effect.clashes.length) {
+      var clash = el('div', null, 'clash');
+      clash.appendChild(el('span', effect.name + ' is rostered on ' + effect.clashes.length +
+        ' day' + (effect.clashes.length === 1 ? '' : 's') +
+        ' inside this span. Those posts need reassigning — this form will not touch them:'));
+      var list = el('ul');
+      effect.clashes.forEach(function (c) {
+        var li = el('li');
+        var link = el('button', c.date + ' ' + c.post, 'btn quiet');
+        link.type = 'button';
+        link.onclick = function () { openDay(c.date); };
+        li.appendChild(link);
+        list.appendChild(li);
+      });
+      clash.appendChild(list);
+      box.appendChild(clash);
+    }
+
+    var row = el('div', null, 'row');
+    var go = el('button', effect.kind === 'absence' ? 'Record the absence' : 'Record the new hours',
+      'btn primary');
+    go.type = 'button';
+    go.onclick = function () {
+      go.disabled = true;
+      go.textContent = 'Writing…';
+      call('opsRecordAway', state.away, function (res) {
+        logWrite(res.summary);
+        say(document.getElementById('awayEffect'), res.summary, 'ops-done');
+        refreshPool();
+      }, function (err) {
+        go.disabled = false;
+        document.getElementById('awayEffect').appendChild(
+          el('p', String(err && err.message || err), 'ops-error'));
+      });
+    };
+    row.appendChild(go);
+    box.appendChild(row);
+  }
+
+  // -- the session record ---------------------------------------------------
+
+  function logWrite(summary) {
+    state.written.push({ at: new Date().toTimeString().slice(0, 5), what: summary });
+    renderLog();
+  }
+
+  function renderLog() {
+    var box = clear(document.getElementById('opsLog'));
+    if (!state.written.length) {
+      box.appendChild(el('p', 'Nothing yet. Everything you write from here also lands on the ' +
+        'Audit tab, with your account against it.', 'ops-empty'));
+      return;
+    }
+    var list = el('ol', null, 'log');
+    state.written.slice().reverse().forEach(function (entry) {
+      var li = el('li');
+      li.appendChild(el('span', entry.at + ' ', 'when'));
+      li.appendChild(el('span', entry.what));
+      list.appendChild(li);
+    });
+    box.appendChild(list);
+    box.appendChild(el('p', 'The Audit tab is the real record; this list only covers ' +
+      'this visit.', 'ops-empty'));
+  }
+
+  // -- wiring ---------------------------------------------------------------
+
+  function init(board) {
+    state.board = board;
+    var ops = board.operator;
+
+    var banner = document.getElementById('opsBanner');
+    banner.appendChild(el('b', 'Operator mode'));
+    banner.appendChild(el('span', 'Everything on this page writes to the live workbook.'));
+    banner.appendChild(el('span', 'Signed in as ' + ops.email +
+      (ops.name ? ' · operator of record: ' + ops.name : ''), 'who'));
+
+    var picker = document.getElementById('dayDate');
+    picker.value = board.today;
+    picker.min = board.period.start;
+    picker.max = board.period.end;
+    picker.onchange = function () { if (picker.value) loadDay(picker.value); };
+    document.getElementById('dayToday').onclick = function () { openDay(board.today); };
+
+    document.getElementById('poolFilter').oninput = renderPool;
+    document.getElementById('poolDropsOnly').onchange = renderPool;
+
+    var seg = document.getElementById('awayKind');
+    Array.prototype.forEach.call(seg.getElementsByTagName('button'), function (button) {
+      button.onclick = function () {
+        Array.prototype.forEach.call(seg.getElementsByTagName('button'), function (b) {
+          b.className = 'btn';
+        });
+        button.className = 'btn on';
+        state.away = { kind: button.getAttribute('data-kind'), name: state.away.name };
+        renderAwayFields();
+      };
+    });
+
+    loadDay(board.today);
+    refreshPool();
+    renderAwayFields();
+    renderLog();
+  }
+
+  return { init: init, openDay: openDay };
+})();
+</script>
