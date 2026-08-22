@@ -158,10 +158,6 @@ const html = `<!DOCTYPE html>
 <style>
   :root { --bg:#fff; --fg:#1a1a1a; --muted:#6b6b6b; --line:#e2e2e2; --accent:#2b4c7e;
           --panel:#f7f7f5; --head:#efefef; }
-  @media (prefers-color-scheme: dark) {
-    :root { --bg:#16181a; --fg:#e9e9e9; --muted:#9aa0a6; --line:#2e3236; --accent:#8fb3e8;
-            --panel:#1d2023; --head:#23262a; }
-  }
   * { box-sizing:border-box; }
   body { margin:0; padding:1.5rem; background:var(--bg); color:var(--fg);
          font:15px/1.55 system-ui,-apple-system,Segoe UI,Roboto,sans-serif; }
