@@ -657,7 +657,12 @@ var PsychocoOps = (function () {
       tr.appendChild(el('td', r.availableDays, 'num'));
       tr.appendChild(el('td', pts(r.points), 'num'));
       tr.appendChild(el('td', pts(r.expected), 'num'));
-      tr.appendChild(el('td', signed(r.balance), 'num'));
+      // The same pill the group sees, for the same reason: the operator reading
+      // this table is reading their own standing in it too.
+      var pill = el('span', signed(r.balance), 'pill ' + (r.balance < 0 ? 'owed' : 'over'));
+      var balanceCell = el('td', null, 'num');
+      balanceCell.appendChild(pill);
+      tr.appendChild(balanceCell);
       tr.onclick = function () {
         state.openPerson = state.openPerson === r.name ? null : r.name;
         renderPool();
